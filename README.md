@@ -20,7 +20,7 @@ make use of the library. Sorted by file size of the `gamecomms.dll` and
 by game title.
 
 | Version | Game                                     | md5sum                           |
-| :-----: |:---------------------------------------- | :-------------------------------:|
+| :-----: |:---------------------------------------- | :------------------------------- |
 |   00    | Nokia N-Gage SDK 1.0 Beta                | cb326c500bdb795494d55d30196b8711 |
 |   01    | Marcel Desailly Pro Soccer               | 79c25cdd1972c287712475ee544c7bf3 |
 |   02    | MotoGP                                   | 8863fdea897f1c63807ad69252a3566f |

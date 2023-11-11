@@ -10,7 +10,9 @@
 #ifndef __GAMEBTCOMMS_H
 #define __GAMEBTCOMMS_H
 
+#include <e32base.h>
 #include <e32std.h>
+#include <es_sock.h>
 #include "GameBTCommsConsts.h"
 
 class MGameBTCommsNotify;

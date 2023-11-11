@@ -15,3 +15,28 @@ GLDEF_C TInt E32Dll(TDllReason /*aReason*/)
 {
     return(KErrNone);
 }
+
+CGameBTComms* CGameBTComms::NewL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog = NULL)
+{
+    CGameBTComms* pCGameBTComms = new CGameBTComms;
+    CleanupStack::PushL(pCGameBTComms);
+    pCGameBTComms->ConstructL(aEventHandler, aGameUID, aLog);
+    CleanupStack::Pop();
+    return pCGameBTComms;
+}
+
+EXPORT_C CGameBTComms::CGameBTComms()
+{
+    iNotify  = NULL;
+    iGameUID = 0;
+    iLog     = NULL;
+    iComms   = NULL;
+}
+
+CGameBTComms::~CGameBTComms()
+{
+}
+
+void CGameBTComms::ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog)
+{
+}

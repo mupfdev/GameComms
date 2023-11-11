@@ -16,8 +16,8 @@ connect several devices via the Internet.
 
 Since I can only speculate about the development status of the
 individual versions, I have created an overview of all games here that
-make use of the library. Sorted by file size of the gamecomms.dll and by
-game title.
+make use of the library. Sorted by file size of the `gamecomms.dll` and
+by game title.
 
 | Version | Game                                     | md5sum                           |
 | :-----: |:---------------------------------------- | :-------------------------------:|
@@ -64,3 +64,9 @@ game title.
 |   09    | The Roots: Gates of Chaos                | 827df54717bc210daa96aef9e12de4a3 |
 |   10    | Asphalt: Urban GT 2                      | 75536306ef48b1928b4562890d01c9c6 |
 |   10    | Warhammer 40,000: Glory in Death         | 75536306ef48b1928b4562890d01c9c6 |
+
+# License
+
+This project's source code is, unless stated otherwise, licensed under
+the "The MIT License".  See the file [LICENSE.md](LICENSE.md) for
+details.

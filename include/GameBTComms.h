@@ -32,6 +32,12 @@ public:
     enum TGameState      { EGameOver, EPlay, EPause };
     enum TConnectState   { ENotConnected, EConnecting, EConnected };
 
+#if VERSION >= 9
+
+    enum TAcceptMode     { EConfirmClients };
+
+#endif /* VERSION >= 9 */
+
 public:
     IMPORT_C void            StartHostL(TUint16 aStartPlayers, TUint16 aMinPlayers);
     IMPORT_C void            StartClientL();
@@ -39,7 +45,13 @@ public:
     IMPORT_C TGameState      GameState();
     IMPORT_C TConnectState   ConnectState();
     IMPORT_C TInt            GetLocalDeviceName(THostName& aHostName);
+
+#if VERSION < 9
+
     IMPORT_C void            Disconnect();
+
+#endif /* VERSION > 9 */
+
     IMPORT_C TInt            DisconnectClient(TUint16 aClientId);
     IMPORT_C TInt            SendDataToClient(TUint16 aClientId, TDesC8& aData);
     IMPORT_C TInt            SendDataToAllClients(TDesC8& aData);
@@ -50,9 +62,24 @@ public:
     IMPORT_C TInt            EndMultiPlayerGame();
     IMPORT_C TBool           IsShowingDeviceSelectDlg();
 
+#if VERSION >= 9
+
+    IMPORT_C TInt            Connect();                                          /* Expects KErrNone */
+    IMPORT_C TInt            DeclareRemoteDevice(const TDeviceDetails& aDevice); /* Expects KErrNone */
+    IMPORT_C TInt            SetBluetoothPowerState(TBool aState);               /* Expects KErrNone */
+    IMPORT_C void            SetLocalDeviceName(THostName aHostName);            /* Return type unclear */
+    IMPORT_C void            BluetoothPowerState(TBool aState);                  /* Return type unclear */
+    IMPORT_C void            Disconnect(TUint16 aClientId = 0, TBool aPermanently = EFalse);
+    IMPORT_C void            EndSession();                                       /* Return type unclear */
+    IMPORT_C void            SendData(TUint16 aClientId, TPtr8 aData);           /* Return type unclear */
+    IMPORT_C void            SetDiscoverabilityModeLimited(TBool aMode);         /* Return type unclear */
+    IMPORT_C void            SetHostAcceptMode(TAcceptMode aMode);               /* Return type unclear */
+    IMPORT_C void            SetSearchModeLimited(TBool aMode);                  /* Return type unclear */
+
+#endif /* VERSION >= 9 */
+
 protected:
     CGameBTComms();
-
     void ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog);
 
 protected:

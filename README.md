@@ -9,7 +9,7 @@ was used in 42 of a total of 55 games.
 
 This project is an attempt to reverse engineer the GameComms library and
 create versions that can be used as drop-in replacements for the 10
-different versions. that were included in the official games.
+different versions that were included in the official games.
 
 The primary idea is to send the data handled by GameComms serially to a
 WiFi-enabled microcontroller or a modern PC, for example, in order to

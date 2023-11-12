@@ -21,7 +21,7 @@ The project is hosted on [GitHub](https://github.com/mupfdev/GameComms).
 
 Since I can only speculate about the development status of the
 individual versions, I have created an overview of all games here that
-make use of the library. Sorted by file size of the `gamecomms.dll` and
+make use of the library.  Sorted by file size of the `gamecomms.dll` and
 by game title.
 
 | Version | Game                                     | md5sum                           |

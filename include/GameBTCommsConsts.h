@@ -1,4 +1,4 @@
-/** @file GameBTComms.h
+/** @file GameBTCommsConsts.h
  *
  *  A GameComms re-implementation for the Nokia N-Gage.
  *
@@ -10,7 +10,7 @@
 #ifndef __GAMEBTCOMMSCONSTS_H
 #define __GAMEBTCOMMSCONSTS_H
 
-const TInt KBTMaxPlayers       = 4;
-const TInt KBTHostConnectionId = 0;
+const TInt KBTMaxPlayers       = 4; ///< Maximum number of players
+const TInt KBTHostConnectionId = 0; ///< Host connection Id
 
 #endif

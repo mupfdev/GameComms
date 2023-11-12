@@ -1,0 +1,16 @@
+name: documentation
+
+on:
+  push:
+    paths:
+      - include/**
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: DenverCoder1/doxygen-github-pages-action@v1.9.5
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          folder: ./
+          target_folder: docs/

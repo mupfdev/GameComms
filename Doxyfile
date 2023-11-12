@@ -213,8 +213,8 @@ HTML_FILE_EXTENSION    = .html
 HTML_HEADER            =
 HTML_FOOTER            =
 HTML_STYLESHEET        =
-HTML_EXTRA_STYLESHEET  = docs/doxygen-awesome.css \
-                         docs/doxygen-awesome-sidebar-only.css
+HTML_EXTRA_STYLESHEET  = misc/doxygen-awesome.css \
+                         misc/doxygen-awesome-sidebar-only.css
 HTML_EXTRA_FILES       =
 HTML_COLORSTYLE        = LIGHT
 HTML_COLORSTYLE_HUE    = 220

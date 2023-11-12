@@ -2,8 +2,8 @@ name: documentation
 
 on:
   push:
-    paths:
-      - include/**
+    branches:
+      - main
 
 jobs:
   deploy:

@@ -1,5 +1,7 @@
 # GameComms
 
+[![documentation](https://github.com/mupfdev/GameComms/actions/workflows/documentation.yaml/badge.svg)](https://github.com/mupfdev/GameComms/actions/workflows/documentation.yaml)
+
 GameComms is a connectivity library specialised for multidevice games
 programming on the Series 60 platform to connect up to four devices via
 Bluetooth.  GameComms was part of the proprietary Nokia N-Gage SDK and

@@ -33,7 +33,7 @@ set(gamecomms_sources
 
 add_library(gamecomms STATIC ${gamecomms_sources})
 
-build_dll(gamecomms dll ${UID1} ${UID2} ${UID3} "${gamecomms_libs}" "${SRC_DIR}/gamecomms.def")
+build_dll(gamecomms dll ${UID1} ${UID2} ${UID3} "${gamecomms_libs}")
 
 target_compile_definitions(
     gamecomms

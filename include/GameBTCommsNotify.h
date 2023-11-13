@@ -70,7 +70,8 @@ public:
      *           so the user can be informed the success of the
      *           reconnection process.
      *
-     * @param aClientId   Indicates which client has now connected
+     * @param aClientId
+                          Indicates which client has now connected
      *                    (from 1 to CGameBTComms::KMaxPlayers - 1)
      *
      *                    If aError != KErrNone, aClientId may be
@@ -82,8 +83,8 @@ public:
      *                    CGameBTComms::StartHostL() must be called for
      *                    further connection attempts.
      *
-     * @param aClientName If aError == KErrNone, aClientName will
-     *
+     * @param aClientName
+                          If aError == KErrNone, aClientName will
      *                    1. contain the BT Device name of the client
      *                       device, or
      *

@@ -21,25 +21,19 @@ set(GCC_MODE_DEFS -DNDEBUG -D_UNICODE)
 set(GCC_DEFS      ${GCC_COMN_DEFS} ${GCC_MODE_DEFS})
 
 set(gamecomms_libs
-    ${EPOC_PLATFORM}/gcc/lib/gcc-lib/arm-epoc-pe/2.9-psion-98r2/libgcc.a
-    ${EPOC_LIB}/egcc.lib
-    ${EPOC_LIB}/euser.lib
-    ${EPOC_LIB}/estlib.lib
-    ${EPOC_LIB}/ws32.lib
-    ${EPOC_LIB}/hal.lib
-    ${EPOC_LIB}/efsrv.lib
-    ${EPOC_LIB}/scdv.lib
-    ${EPOC_LIB}/gdi.lib)
+    ${EPOC_LIB}/euser.lib)
 
 set(INC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 set(gamecomms_sources
-    "${SRC_DIR}/GameBTComms.cpp")
+    "${SRC_DIR}/GameBTComms.cpp"
+    "${SRC_DIR}/GameBTCommsNotify.cpp"
+    "${SRC_DIR}/SGEDebugLog.cpp")
 
 add_library(gamecomms STATIC ${gamecomms_sources})
 
-build_dll(gamecomms dll ${UID1} ${UID2} ${UID3} "${gamecomms_libs}")
+build_dll(gamecomms dll ${UID1} ${UID2} ${UID3} "${gamecomms_libs}" "${SRC_DIR}/gamecomms.def")
 
 target_compile_definitions(
     gamecomms

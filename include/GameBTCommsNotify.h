@@ -163,7 +163,6 @@ public:
      *        disconnected, leaving not enough players to play the game.
      *
      * @param aError
-     *
      *               - KErrNone if successful and the game could be
      *                          started, otherwise
      *
@@ -231,7 +230,6 @@ public:
      *           players than the minimum remaining.
      *
      * @param aReason
-     *
      *        - KErrHostQuit         The host has quit and so the game
      *                               cannot be played anymore
      *

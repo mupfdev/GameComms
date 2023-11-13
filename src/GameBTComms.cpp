@@ -1,6 +1,9 @@
 /** @file GameBTComms.cpp
  *
- *  A GameComms re-implementation for the Nokia N-Gage.
+ *  Class that provides games with Bluetooth comms.
+ *
+ *  Note that it is the game's responsibility to provide the UI to
+ *  accompany this (with the exception of the BT device selection UI)
  *
  *  Copyright (c) 2023, Michael Fitzmayer. All rights reserved.
  *  SPDX-License-Identifier: MIT
@@ -16,7 +19,7 @@ GLDEF_C TInt E32Dll(TDllReason /*aReason*/)
     return(KErrNone);
 }
 
-CGameBTComms* CGameBTComms::NewL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog = NULL)
+EXPORT_C CGameBTComms* CGameBTComms::NewL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog = NULL)
 {
     CGameBTComms* pCGameBTComms = new CGameBTComms;
     CleanupStack::PushL(pCGameBTComms);
@@ -25,7 +28,7 @@ CGameBTComms* CGameBTComms::NewL(MGameBTCommsNotify* aEventHandler, TUint32 aGam
     return pCGameBTComms;
 }
 
-EXPORT_C CGameBTComms::CGameBTComms()
+CGameBTComms::CGameBTComms()
 {
     iNotify  = NULL;
     iGameUID = 0;
@@ -33,7 +36,7 @@ EXPORT_C CGameBTComms::CGameBTComms()
     iComms   = NULL;
 }
 
-CGameBTComms::~CGameBTComms()
+EXPORT_C CGameBTComms::~CGameBTComms()
 {
 }
 
@@ -70,8 +73,6 @@ EXPORT_C TInt CGameBTComms::GetLocalDeviceName(THostName& aHostName)
 {
     TInt aError = KErrNone;
 
-    (void)aHostName;
-
     return aError;
 }
 
@@ -83,17 +84,12 @@ EXPORT_C TInt CGameBTComms::DisconnectClient(TUint16 aClientId)
 {
     TInt aError = KErrNone;
 
-    (void)aClientId;
-
     return aError;
 }
 
 EXPORT_C TInt CGameBTComms::SendDataToClient(TUint16 aClientId, TDesC8& aData)
 {
     TInt aError = KErrNone;
-
-    (void)aClientId;
-    (void)aData;
 
     return aError;
 }
@@ -102,16 +98,12 @@ EXPORT_C TInt CGameBTComms::SendDataToAllClients(TDesC8& aData)
 {
     TInt aError = KErrNone;
 
-    (void)aData;
-
     return aError;
 }
 
 EXPORT_C TInt CGameBTComms::SendDataToHost(TDesC8& aData)
 {
     TInt aError = KErrNone;
-
-    (void)aData;
 
     return aError;
 }
@@ -144,6 +136,12 @@ EXPORT_C TInt CGameBTComms::EndMultiPlayerGame()
     return aError;
 }
 
+EXPORT_C TBool CGameBTComms::IsShowingDeviceSelectDlg()
+{
+    TBool aState = EFalse;
+
+    return aState;
+}
 
 void CGameBTComms::ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog)
 {

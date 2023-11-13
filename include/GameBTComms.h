@@ -1,6 +1,9 @@
 /** @file GameBTComms.h
  *
- *  A GameComms re-implementation for the Nokia N-Gage.
+ *  Class that provides games with Bluetooth comms.
+ *
+ *  Note that it is the game's responsibility to provide the UI to
+ *  accompany this (with the exception of the BT device selection UI)
  *
  *  Copyright (c) 2023, Michael Fitzmayer. All rights reserved.
  *  SPDX-License-Identifier: MIT
@@ -16,6 +19,7 @@
  */
 #define VERSION 0
 
+#include <btsdp.h>
 #include <e32base.h>
 #include <e32std.h>
 #include <es_sock.h>
@@ -60,7 +64,6 @@ public:
      *
      * @return A new CGameBTComms object.
      *
-     * @remark Ordinal 11
      */
     IMPORT_C static CGameBTComms* NewL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog = NULL);
     IMPORT_C ~CGameBTComms();
@@ -153,7 +156,6 @@ public:
      *
      * @retval EIdle   Otherwise (CGameBTComms has been just constructed)
      *
-     * @remark Ordinal 3
      */
     IMPORT_C TConnectionRole ConnectionRole();
 
@@ -284,7 +286,6 @@ public:
      * @return Any EPOC error code
      * @retval KErrNone If successful
      *
-     * @remark Ordinal 5
      */
     IMPORT_C TInt DisconnectClient(TUint16 aClientId);
 
@@ -312,7 +313,6 @@ public:
      * @retval KErrPaused   If the game is in a paused state
      * @retval KErrGameOver If in a game over state
      *
-     * @remark Ordinal 17
      */
     IMPORT_C TInt SendDataToClient(TUint16 aClientId, TDesC8& aData);
 
@@ -339,7 +339,6 @@ public:
      *
      * @retval KErrGameOver If in a game over state
      *
-     * @remark Ordinal 16
      */
     IMPORT_C TInt SendDataToAllClients(TDesC8& aData);
 
@@ -365,7 +364,6 @@ public:
      *
      * @retval KErrGameOver If in a game over state
      *
-     * @remark Ordinal 18
      */
     IMPORT_C TInt SendDataToHost(TDesC8& aData);
 
@@ -393,7 +391,6 @@ public:
      *
      * @retval KErrNone If successful
      *
-     * @remark Ordinal 4
      */
     IMPORT_C TInt ContinueMultiPlayerGame();
 
@@ -439,7 +436,6 @@ public:
      * @retval KErrNotReady If StartHostL or StartClientL has not been
      *                      called
      *
-     * @remark Ordinal 15
      */
     IMPORT_C TInt ReconnectL(TBool aMustReconnectToAll = ETrue);
 
@@ -467,7 +463,6 @@ public:
      *
      * @retval KErrNone if successful
      *
-     * @remark Ordinal 14
      */
     IMPORT_C TInt PauseMultiPlayerGame();
 
@@ -502,7 +497,6 @@ public:
      *
      * @retval KErrNone If successful
      *
-     * @remark Ordinal 7
      */
     IMPORT_C TInt EndMultiPlayerGame();
 
@@ -530,7 +524,6 @@ public:
      *
      * @retval EFalse Device selection dialog is not shown
      *
-     * @remark Ordinal 10
      */
     IMPORT_C TBool IsShowingDeviceSelectDlg();
 
@@ -550,14 +543,30 @@ public:
 
 #endif /* VERSION >= 9 */
 
+
+private:
+
+
 protected:
+
+    /**
+     * @fn    CGameBTComms()
+     *
+     * @brief Default C++ Constructor.
+     */
     CGameBTComms();
+
+    /**
+     * @fn    void ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog)
+     *
+     * @brief EPOC Constructor
+     */
     void ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog);
 
 protected:
-    MGameBTCommsNotify* iNotify;
-    TUint32             iGameUID;
-    RSGEDebugLog*       iLog;
+    MGameBTCommsNotify* iNotify;  ///< Stores a pointer to the user object that will receive callbacks
+    TUint32             iGameUID; ///< UID of the game to be played
+    RSGEDebugLog*       iLog;     ///< Pointer to file of debug logging (if included in build!)
     CGameBTBase*        iComms;
 };
 

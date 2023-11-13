@@ -1,6 +1,7 @@
 /** @file GameBTCommsNotify.h
  *
- *  A GameComms re-implementation for the Nokia N-Gage.
+ *  Mixin class that specifies the notification callbacks that are
+ *  called by the BT Comms library.
  *
  *  Copyright (c) 2023, Michael Fitzmayer. All rights reserved.
  *  SPDX-License-Identifier: MIT

@@ -1,6 +1,6 @@
 /** @file GameBTCommsConsts.h
  *
- *  A GameComms re-implementation for the Nokia N-Gage.
+ *  File providing constant values.
  *
  *  Copyright (c) 2023, Michael Fitzmayer. All rights reserved.
  *  SPDX-License-Identifier: MIT

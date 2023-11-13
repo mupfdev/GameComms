@@ -1,6 +1,7 @@
 /** @file GameBTCommsNotify.cpp
  *
- *  A GameComms re-implementation for the Nokia N-Gage.
+ *  Mixin class that specifies the notification callbacks that are
+ *  called by the BT Comms library.
  *
  *  Copyright (c) 2023, Michael Fitzmayer. All rights reserved.
  *  SPDX-License-Identifier: MIT
@@ -11,50 +12,50 @@
 #include <e32std.h>
 #include "GameBTCommsNotify.h"
 
-EXPORT_C void MGameBTCommsNotify::ClientConnected(TUint16 aClientId, TDesC& aClientName, TInt aError)
+void MGameBTCommsNotify::ClientConnected(TUint16 aClientId, TDesC& aClientName, TInt aError)
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::HostSelected(TInt aError)
+void MGameBTCommsNotify::HostSelected(TInt aError)
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::HostConnected(TInt aError)
+void MGameBTCommsNotify::HostConnected(TInt aError)
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::StartMultiPlayerGame(TInt aError)
+void MGameBTCommsNotify::StartMultiPlayerGame(TInt aError)
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::ContinueMultiPlayerGame()
+void MGameBTCommsNotify::ContinueMultiPlayerGame()
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::PauseMultiPlayerGame()
+void MGameBTCommsNotify::PauseMultiPlayerGame()
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::EndMultiPlayerGame(TInt aReason)
+void MGameBTCommsNotify::EndMultiPlayerGame(TInt aReason)
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::ConnectedClientEndedGame(TUint16 aClientId)
+void MGameBTCommsNotify::ConnectedClientEndedGame(TUint16 aClientId)
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::ClientDisconnected(TUint16 aClientId, TInt aError)
+void MGameBTCommsNotify::ClientDisconnected(TUint16 aClientId, TInt aError)
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::HostDisconnected(TInt aError)
+void MGameBTCommsNotify::HostDisconnected(TInt aError)
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::ReceiveDataFromClient(TUint16 aClientId, TDesC8& aData)
+void MGameBTCommsNotify::ReceiveDataFromClient(TUint16 aClientId, TDesC8& aData)
 {
 }
 
-EXPORT_C void MGameBTCommsNotify::ReceiveDataFromHost(TDesC8& aData)
+void MGameBTCommsNotify::ReceiveDataFromHost(TDesC8& aData)
 {
 }

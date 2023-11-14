@@ -170,7 +170,8 @@ FILE_PATTERNS          = *.c \
                          *.qsf \
                          *.ice
 RECURSIVE              = NO
-EXCLUDE                =
+EXCLUDE                = src/Bluetooth/* \
+                         include/Bluetooth/*
 EXCLUDE_SYMLINKS       = NO
 EXCLUDE_PATTERNS       =
 EXCLUDE_SYMBOLS        =

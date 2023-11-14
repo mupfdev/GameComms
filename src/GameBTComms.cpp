@@ -13,6 +13,8 @@
 #include <e32def.h>
 #include <e32std.h>
 #include "GameBTComms.h"
+#include "MessageServer.h"
+#include "MessageClient.h"
 
 GLDEF_C TInt E32Dll(TDllReason /*aReason*/)
 {
@@ -38,6 +40,11 @@ CGameBTComms::CGameBTComms()
 
 EXPORT_C CGameBTComms::~CGameBTComms()
 {
+    delete iServer;
+    iServer = NULL;
+
+    delete iClient;
+    iClient = NULL;
 }
 
 EXPORT_C void CGameBTComms::StartHostL(TUint16 aStartPlayers, TUint16 aMinPlayers)
@@ -145,4 +152,6 @@ EXPORT_C TBool CGameBTComms::IsShowingDeviceSelectDlg()
 
 void CGameBTComms::ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog)
 {
+    iServer = CMessageServer::NewL(*iMLog);
+    iClient = CMessageClient::NewL(*iMLog);
 }

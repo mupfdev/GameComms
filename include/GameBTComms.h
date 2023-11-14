@@ -24,6 +24,8 @@
 #include <e32std.h>
 #include <es_sock.h>
 #include "GameBTCommsConsts.h"
+#include "MessageServer.h"
+#include "MessageClient.h"
 
 class MGameBTCommsNotify;
 class RSGEDebugLog;
@@ -568,6 +570,11 @@ protected:
     TUint32             iGameUID; ///< UID of the game to be played
     RSGEDebugLog*       iLog;     ///< Pointer to file of debug logging (if included in build!)
     CGameBTBase*        iComms;
+
+private:
+    MLog*           iMLog;   ///< Pointer to log 
+    CMessageServer* iServer; ///< iServer The message receiving engine
+    CMessageClient* iClient; ///< iClient the message sending engine
 };
 
 #endif /* __GAMEBTCOMMS_H */

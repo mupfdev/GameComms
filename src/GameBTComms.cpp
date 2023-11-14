@@ -15,6 +15,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include "GameBTComms.h"
+#include "GameBTCommsNotify.h"
 #include "MessageServer.h"
 #include "MessageClient.h"
 
@@ -34,52 +35,66 @@ EXPORT_C CGameBTComms* CGameBTComms::NewL(MGameBTCommsNotify* aEventHandler, TUi
 {
     CGameBTComms* pCGameBTComms = new CGameBTComms;
 
-    DebugLog(LOG, "NewL(%p, %u, %p)\n", aEventHandler, aGameUID, aLog);
+    DebugLog(LOG, "NewL(%p, 0x%8x, %p)\n", aEventHandler, aGameUID, aLog);
 
     CleanupStack::PushL(pCGameBTComms);
     pCGameBTComms->ConstructL(aEventHandler, aGameUID, aLog);
     CleanupStack::Pop();
+
     return pCGameBTComms;
 }
 
 CGameBTComms::CGameBTComms()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
-
-    iNotify  = NULL;
-    iGameUID = 0;
-    iLog     = NULL;
-    iComms   = NULL;
 }
 
 EXPORT_C CGameBTComms::~CGameBTComms()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
+    if (iServer)
+    {
+        iServer->StopL();
+    }
+
     delete iServer;
     iServer = NULL;
 
     delete iClient;
     iClient = NULL;
+
+    delete iNotify;
+    iNotify = NULL;
+
+    delete iNotify;
+    iLog = NULL;
 }
 
 EXPORT_C void CGameBTComms::StartHostL(TUint16 aStartPlayers, TUint16 aMinPlayers)
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
+    aConnectionRole = EHost;
+    aConnectState   = EConnected;
+
+    iNotify->ClientConnected(0x1234, _L("mupfdev"), KErrNone);
+    iNotify->StartMultiPlayerGame(KErrNone);
 }
 
 EXPORT_C void CGameBTComms::StartClientL()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
+    aConnectionRole = EClient;
+    aConnectState   = EConnected;
 }
 
 EXPORT_C CGameBTComms::TConnectionRole CGameBTComms::ConnectionRole()
 {
-    TConnectionRole aRole = EIdle;
-
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
-    return aRole;
+    return aConnectionRole;
 }
 
 EXPORT_C CGameBTComms::TGameState CGameBTComms::GameState()
@@ -93,11 +108,9 @@ EXPORT_C CGameBTComms::TGameState CGameBTComms::GameState()
 
 EXPORT_C CGameBTComms::TConnectState CGameBTComms::ConnectState()
 {
-    TConnectState aState = EConnected;
-
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
-    return aState;
+    return aConnectState;
 }
 
 EXPORT_C TInt CGameBTComms::GetLocalDeviceName(THostName& aHostName)
@@ -198,6 +211,20 @@ EXPORT_C TBool CGameBTComms::IsShowingDeviceSelectDlg()
 void CGameBTComms::ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog)
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
-    iServer = CMessageServer::NewL(*iMLog);
-    iClient = CMessageClient::NewL(*iMLog);
+
+    iNotify         = aEventHandler;
+    iGameUID        = aGameUID;
+    iLog            = aLog;
+    aConnectionRole = EIdle;
+    aConnectState   = EConnecting;
+    iServer         = CMessageServer::NewL(*iMLog);
+    iClient         = CMessageClient::NewL(*iMLog);
+
+#if 0
+    if (iClient)
+    {
+        DebugLog(LOG, "%s: Connect Message Client\n", __FUNCTION__);
+        iClient->ConnectL();
+    }
+#endif
 }

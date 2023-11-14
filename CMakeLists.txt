@@ -10,7 +10,7 @@ else()
     message(FATAL_ERROR "The environment variable NGAGESDK needs to be defined.")
 endif()
 
-project(gamecomms CXX)
+project(gamecomms C CXX)
 
 set(UID1 0x1000007a) # KDynamicLibraryUidValue, e32uid.h
 set(UID2 0x1000008d)
@@ -21,15 +21,11 @@ set(GCC_MODE_DEFS -DNDEBUG -D_UNICODE)
 set(GCC_DEFS      ${GCC_COMN_DEFS} ${GCC_MODE_DEFS})
 
 set(gamecomms_libs
+    ${EPOC_LIB}/egcc.lib
+    ${EPOC_LIB}/estlib.lib
     ${EPOC_LIB}/euser.lib
-    ${EPOC_LIB}/apparc.lib
-    ${EPOC_LIB}/cone.lib 
-    ${EPOC_LIB}/eikcore.lib  
-    ${EPOC_LIB}/eikcoctl.lib
-    ${EPOC_LIB}/avkon.lib  
-    ${EPOC_LIB}/bafl.lib
     ${EPOC_LIB}/esock.lib
-    ${EPOC_LIB}/bluetooth.lib 
+    ${EPOC_LIB}/bluetooth.lib
     ${EPOC_LIB}/btextnotifiers.lib
     ${EPOC_LIB}/btmanclient.lib
     ${EPOC_LIB}/sdpagent.lib
@@ -42,6 +38,7 @@ set(gamecomms_sources
     "${SRC_DIR}/GameBTComms.cpp"
     "${SRC_DIR}/GameBTCommsNotify.cpp"
     "${SRC_DIR}/SGEDebugLog.cpp"
+    "${SRC_DIR}/DebugLog.c"
     "${SRC_DIR}/Bluetooth/BTServiceAdvertiser.cpp"
     "${SRC_DIR}/Bluetooth/BTServiceSearcher.cpp"
     "${SRC_DIR}/Bluetooth/MessageClient.cpp"

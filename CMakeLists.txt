@@ -21,7 +21,19 @@ set(GCC_MODE_DEFS -DNDEBUG -D_UNICODE)
 set(GCC_DEFS      ${GCC_COMN_DEFS} ${GCC_MODE_DEFS})
 
 set(gamecomms_libs
-    ${EPOC_LIB}/euser.lib)
+    ${EPOC_LIB}/euser.lib
+    ${EPOC_LIB}/apparc.lib
+    ${EPOC_LIB}/cone.lib 
+    ${EPOC_LIB}/eikcore.lib  
+    ${EPOC_LIB}/eikcoctl.lib
+    ${EPOC_LIB}/avkon.lib  
+    ${EPOC_LIB}/bafl.lib
+    ${EPOC_LIB}/esock.lib
+    ${EPOC_LIB}/bluetooth.lib 
+    ${EPOC_LIB}/btextnotifiers.lib
+    ${EPOC_LIB}/btmanclient.lib
+    ${EPOC_LIB}/sdpagent.lib
+    ${EPOC_LIB}/sdpdatabase.lib)
 
 set(INC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -29,7 +41,14 @@ set(SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 set(gamecomms_sources
     "${SRC_DIR}/GameBTComms.cpp"
     "${SRC_DIR}/GameBTCommsNotify.cpp"
-    "${SRC_DIR}/SGEDebugLog.cpp")
+    "${SRC_DIR}/SGEDebugLog.cpp"
+    "${SRC_DIR}/Bluetooth/BTServiceAdvertiser.cpp"
+    "${SRC_DIR}/Bluetooth/BTServiceSearcher.cpp"
+    "${SRC_DIR}/Bluetooth/MessageClient.cpp"
+    "${SRC_DIR}/Bluetooth/MessageServer.cpp"
+    "${SRC_DIR}/Bluetooth/MessageServiceAdvertiser.cpp"
+    "${SRC_DIR}/Bluetooth/MessageServiceSearcher.cpp"
+    "${SRC_DIR}/Bluetooth/SdpAttributeParser.cpp")
 
 add_library(gamecomms STATIC ${gamecomms_sources})
 
@@ -55,4 +74,5 @@ target_compile_options(
 target_include_directories(
     gamecomms
     PUBLIC
-    ${INC_DIR})
+    ${INC_DIR}
+    ${INC_DIR}/Bluetooth/)

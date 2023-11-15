@@ -11,7 +11,6 @@
 #include <BtSdp.h>
 
 class CMessageServiceSearcher;
-class MLog;
 
 /*! 
   @class CMessageClient
@@ -25,19 +24,17 @@ public:
   @function NewL
   
   @discussion Construct a CMessageClient
-  @param aLog the log to send output to
   @result a pointer to the created instance of CMessageClient
   */
-    static CMessageClient* NewL(MLog& aLog);
+    static CMessageClient* NewL();
 
 /*!
   @function NewLC
   
   @discussion Construct a CMessageClient
-  @param aLog the log to send output to
   @result a pointer to the created instance of CMessageClient
   */
-    static CMessageClient* NewLC(MLog& aLog);
+    static CMessageClient* NewLC();
 
 /*!
   @function ~CMessageClient
@@ -138,7 +135,7 @@ private:
 
   @discussion Constructs this object
   */
-    CMessageClient(MLog& aLog);
+    CMessageClient();
 
 /*!
   @function ConstructL
@@ -181,9 +178,6 @@ private:
     /*! @var iServiceSearcher searches for service this client can connect to */
     CMessageServiceSearcher* iServiceSearcher;
 
-    /*! @var iLog the log to send output to */
-    MLog& iLog;
-
     /*! @var iMessage a copy of the message to send */
     HBufC8* iMessage;
 
@@ -202,4 +196,3 @@ private:
     };
 
 #endif // __MESSAGECLIENT_H__
-

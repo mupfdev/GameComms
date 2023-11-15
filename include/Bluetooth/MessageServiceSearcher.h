@@ -5,7 +5,6 @@
 
 #include <e32base.h>
 #include "BTServiceSearcher.h"
-#include "Log.h"
 
 /*! 
   @class CMessageServiceSearcher
@@ -19,19 +18,17 @@ public:
   @function NewL
    
   @discussion Create a CMessageServiceSearcher object
-  @param aLog the log to send output to
   @result a pointer to the created instance of CMessageServiceSearcher
   */
-    static CMessageServiceSearcher* NewL(MLog& aLog);
+    static CMessageServiceSearcher* NewL();
 
 /*!
   @function NewLC
    
   @discussion Create a CMessageServiceSearcher object
-  @param aLog the log to send output to
   @result a pointer to the created instance of CMessageServiceSearcher
   */
-    static CMessageServiceSearcher* NewLC(MLog& aLog);
+    static CMessageServiceSearcher* NewLC();
 
 /*!
   @function ~CMessageServiceSearcher
@@ -78,9 +75,8 @@ private:
   @function CMessageServiceSearcher
 
   @discussion Constructs this object
-  @param aLog the log to send output to
   */
-    CMessageServiceSearcher(MLog& aLog);
+    CMessageServiceSearcher();
 
 /*!
   @function ConstructL

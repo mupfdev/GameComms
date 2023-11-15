@@ -3,9 +3,8 @@
 #include "BTServiceSearcher.h"
 #include "BTServiceSearcher.pan"
 
-CBTServiceSearcher::CBTServiceSearcher(MLog& aLog)
-:  iIsDeviceSelectorConnected(EFalse),
-   iLog(aLog)
+CBTServiceSearcher::CBTServiceSearcher()
+:  iIsDeviceSelectorConnected(EFalse)
     {
     }
 
@@ -102,14 +101,14 @@ void CBTServiceSearcher::NextRecordRequestCompleteL(
 
     if (aError != KErrNone)
         {
-        iLog.LogL(_L("NRRC ERR"), aError);
+        // NRRC ERR
         Finished(aError);
         return;
         }
 
     if (aTotalRecordsCount == 0)
         {
-        iLog.LogL(_L("NRRC No records"));
+        // NRRC No records
         Finished(KErrNotFound);
         return;
         }
@@ -171,7 +170,7 @@ void CBTServiceSearcher::AttributeRequestCompleteL(TSdpServRecordHandle /*aHandl
     {
     if (aError != KErrNone)
         {
-        iLog.LogL(_L("Can't get attribute "), aError);
+        //Can't get attribute
         }
     else if (!HasFinishedSearching())
         {
@@ -180,7 +179,7 @@ void CBTServiceSearcher::AttributeRequestCompleteL(TSdpServRecordHandle /*aHandl
         }
     else
         {
-        iLog.LogL(_L("AttrReqCom"));
+        // AttrReqCom
         Finished();
         }
     }

@@ -217,8 +217,8 @@ void CGameBTComms::ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUI
     iLog            = aLog;
     aConnectionRole = EIdle;
     aConnectState   = EConnecting;
-    iServer         = CMessageServer::NewL(*iMLog);
-    iClient         = CMessageClient::NewL(*iMLog);
+    iServer         = CMessageServer::NewL();
+    iClient         = CMessageClient::NewL();
 
 #if 0
     if (iClient)

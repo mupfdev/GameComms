@@ -3,29 +3,27 @@
 #include "MessageServer.h"
 #include "MessageProtocolConstants.h"
 #include "MessageServiceAdvertiser.h"
-#include "Log.h"
 #include "BTPointToPoint.pan"
 
 static const TInt KListeningQueSize = 1;
 
-CMessageServer* CMessageServer::NewL(MLog& aLog)
+CMessageServer* CMessageServer::NewL()
     {
-    CMessageServer* self = NewLC(aLog);
+    CMessageServer* self = NewLC();
     CleanupStack::Pop(self);
     return self;
     }
     
-CMessageServer* CMessageServer::NewLC(MLog& aLog)
+CMessageServer* CMessageServer::NewLC()
     {
-    CMessageServer* self = new (ELeave) CMessageServer(aLog);
+    CMessageServer* self = new (ELeave) CMessageServer();
     CleanupStack::PushL(self);
     self->ConstructL();
     return self;
     }
 
-CMessageServer::CMessageServer(MLog& aLog)
+CMessageServer::CMessageServer()
 : CActive(CActive::EPriorityStandard),
-  iLog(aLog),
   iState(EDisconnected)
     {
     CActiveScheduler::Add(this);
@@ -58,19 +56,19 @@ void CMessageServer::RunL()
     if (iStatus == KErrDisconnected)
         {
         // Disconnected so go back to listening
-        iLog.LogL(_L("Disconnected"));
+        // Disconnected
         StopL();
         return;
         }
     else if (iStatus == KErrAbort)
         {
-        iLog.LogL(_L("Disconnected"));
+        // Disconnected
         StopL();
         return;
         }
     else if (iStatus != KErrNone)
         {
-        iLog.LogL(_L("Receiver Error "), iStatus.Int());
+        // Receiver Error
         StopL();
         return;
         }
@@ -78,7 +76,7 @@ void CMessageServer::RunL()
     switch (iState)
         {
         case EConnecting:
-            iLog.LogL(_L("Connected"));
+            // Connected
             
             // do not accept any more connections
             iAdvertiser->UpdateAvailabilityL(EFalse);
@@ -91,7 +89,6 @@ void CMessageServer::RunL()
             HBufC* text = HBufC::NewLC(iBuffer.Length());
             text->Des().Copy(iBuffer);
 
-            iLog.LogL(*text);
             CleanupStack::PopAndDestroy(text);
             RequestData(); //  Get more data
             }
@@ -126,7 +123,7 @@ void CMessageServer::StartL()
 
     TBTSockAddr listeningAddress;
     listeningAddress.SetPort(channel);
-    iLog.LogL(_L("Get port = "), channel);
+    // Get port
 
     User::LeaveIfError(iListeningSocket.Bind(listeningAddress));
     User::LeaveIfError(iListeningSocket.Listen(KListeningQueSize));
@@ -138,7 +135,7 @@ void CMessageServer::StartL()
     iListeningSocket.Accept(iAcceptedSocket, iStatus);
     SetActive();
 
-    iLog.LogL(_L("Accept next connection"));
+    // Accept next connection
 
     SetSecurityOnChannelL(EFalse, EFalse, ETrue, channel);
 

@@ -3,32 +3,30 @@
 #include "MessageClient.h"
 #include "MessageServiceSearcher.h"
 #include "BTPointToPoint.pan"
-#include "Log.h"
 
 _LIT8(KMessage, "Hello world");
 
-CMessageClient* CMessageClient::NewL(MLog& aLog)
+CMessageClient* CMessageClient::NewL()
     {
-    CMessageClient* self = NewLC(aLog);
+    CMessageClient* self = NewLC();
     CleanupStack::Pop(self);
     return self;
     }
     
-CMessageClient* CMessageClient::NewLC(MLog& aLog)
+CMessageClient* CMessageClient::NewLC()
     {
-    CMessageClient* self = new (ELeave) CMessageClient(aLog);
+    CMessageClient* self = new (ELeave) CMessageClient();
     CleanupStack::PushL(self);
     self->ConstructL(KMessage);
     return self;
     }
 
-CMessageClient::CMessageClient(MLog& aLog)
+CMessageClient::CMessageClient()
 : CActive(CActive::EPriorityStandard),
-  iState(EWaitingToGetDevice),
-  iLog(aLog)
-    {
+  iState(EWaitingToGetDevice)
+{
     CActiveScheduler::Add(this);
-    }
+}
 
 CMessageClient::~CMessageClient()
     {
@@ -52,7 +50,7 @@ CMessageClient::~CMessageClient()
 
 void CMessageClient::ConstructL(const TDesC8& aMessage)
     {
-    iServiceSearcher = CMessageServiceSearcher::NewL(iLog);
+    iServiceSearcher = CMessageServiceSearcher::NewL();
 
     iMessage = aMessage.AllocL();
 
@@ -74,35 +72,35 @@ void CMessageClient::RunL()
             case EGettingDevice:
                 if (iStatus == KErrCancel)
                     {
-                    iLog.LogL(_L("No device selected"));
+                    // No device selected;
                     }
                 iState = EWaitingToGetDevice;
                 break;
             case EGettingService:
             case EGettingConnection:
-                iLog.LogL(_L("Connection error "), iStatus.Int());
+                // Connection error
                 iState = EWaitingToGetDevice;
                 break;
 			case EConnected:
-                iLog.LogL(_L("Lost connection "), iStatus.Int());
+                // Lost connection
 				DisconnectFromServerL();
 				iState = EDisconnecting;
 				break;
             case ESendingMessage:
-                iLog.LogL(_L("Message Failed "), iStatus.Int());
+                // Message Failed
 				DisconnectFromServerL();
 				iState = EDisconnecting;
                 break;
 			case EDisconnecting:
 				if (iStatus == KErrDisconnected)
 				{
-					iLog.LogL(_L("Disconnection complete "), iStatus.Int());
+					// Disconnection complete
 					iSendingSocket.Close();
 					iState = EWaitingToGetDevice;
 				}
 				else
 				{
-					iLog.LogL(_L("Failed to disconnect "), iStatus.Int());
+					// Failed to disconnect
 					Panic(EBTPointToPointUnableToDisconnect);
 				}
 				break;
@@ -117,7 +115,6 @@ void CMessageClient::RunL()
             {
             case EGettingDevice:
                 // found a device now search for a suitable service
-                iLog.LogL(iServiceSearcher->ResponseParams().DeviceName());
                 iState = EGettingService;
                 iStatus = KRequestPending; // this means that the RunL can not be called until
                                            // this program does something to iStatus
@@ -125,19 +122,19 @@ void CMessageClient::RunL()
                 SetActive();
                 break;
             case EGettingService:
-                iLog.LogL(_L("Found service"));
+                // Found service
                 iState = EGettingConnection;
                 ConnectToServerL();
                 break;
             case EGettingConnection:
-                iLog.LogL(_L("Connected"));
+                // Connected
                 iState = EConnected;
 				// Catch disconnection event 
 				// By waiting to read socket
 				WaitOnConnectionL();
                 break;
 			case EConnected:
-                iLog.LogL(_L("Data Recieved"));
+                // Data Recieved
 				// Just dump data
 				iDummyBuffer.Zero();
 				// Catch disconnection event 
@@ -145,14 +142,14 @@ void CMessageClient::RunL()
 				WaitOnConnectionL();
 				break;
             case ESendingMessage:
-                iLog.LogL(_L("Sent message"));
+                // Sent message
                 iState = EConnected;
 				// Catch disconnection event 
 				// By waiting to read socket
 				WaitOnConnectionL();
                 break;
             case EDisconnecting:
-                iLog.LogL(_L("Disconnection complete"));
+                // Disconnection complete
 				iSendingSocket.Close();
                 iState = EWaitingToGetDevice;
                 break;
@@ -173,7 +170,7 @@ void CMessageClient::ConnectL()
         }
     else
         {
-        iLog.LogL(_L("Client busy"));
+        // Client busy
         User::Leave(KErrInUse);
         }
     }
@@ -187,7 +184,7 @@ void CMessageClient::DisconnectL()
 	}
 	else
 	{
-        iLog.LogL(_L("No connection!"));
+        // No connection!
         User::Leave(KErrDisconnected);
 	}
 	}
@@ -198,17 +195,15 @@ void CMessageClient::DisconnectFromServerL()
 	iSendingSocket.CancelAll();
 	Cancel();
   
-	iLog.LogL(_L("Releasing connection"));
+	// Releasing connection
 	iSendingSocket.Shutdown(RSocket::ENormal,iStatus);
 	SetActive();
 
 	}
 
-
-
 void CMessageClient::ConnectToServerL()
     {
-    iLog.LogL(_L("Connecting to service"));
+    // Connecting to service
 
 	User::LeaveIfError(iSendingSocket.Open(iSocketServer, _L("RFCOMM")));
 

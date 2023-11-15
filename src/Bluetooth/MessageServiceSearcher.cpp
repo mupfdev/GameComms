@@ -25,23 +25,23 @@ static const TStaticArrayC<TSdpAttributeParser::SSdpAttributeNode> gSerialPortPr
         gSerialPortProtocolArray
     );
 
-CMessageServiceSearcher* CMessageServiceSearcher::NewL(MLog& aLog)
+CMessageServiceSearcher* CMessageServiceSearcher::NewL()
     {
-    CMessageServiceSearcher* self = CMessageServiceSearcher::NewLC(aLog);
+    CMessageServiceSearcher* self = CMessageServiceSearcher::NewLC();
     CleanupStack::Pop(self);
     return self;
     }
     
-CMessageServiceSearcher* CMessageServiceSearcher::NewLC(MLog& aLog)
+CMessageServiceSearcher* CMessageServiceSearcher::NewLC()
     {
-    CMessageServiceSearcher* self = new (ELeave) CMessageServiceSearcher(aLog);
+    CMessageServiceSearcher* self = new (ELeave) CMessageServiceSearcher();
     CleanupStack::PushL(self);
     self->ConstructL();
     return self;
     }
 
-CMessageServiceSearcher::CMessageServiceSearcher(MLog& aLog)
-: CBTServiceSearcher(aLog),
+CMessageServiceSearcher::CMessageServiceSearcher()
+: CBTServiceSearcher(),
   iServiceClass(KServiceClass),
   iPort(-1)
     {

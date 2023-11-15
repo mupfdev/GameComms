@@ -9,7 +9,6 @@
 
 #include "SdpAttributeParser.h"
 #include "SdpAttributeNotifier.h"
-#include "Log.h"
 
 /*! 
   @class CBTServiceSearcher
@@ -62,11 +61,10 @@ public:
 protected:
 /*!
   @function CBTServiceSearcher
-  
-  @param aLog the log to send output to
+
   @discussion Constructs this object
   */
-    CBTServiceSearcher(MLog& aLog);
+    CBTServiceSearcher();
 
 /*!
   @function Finished
@@ -198,9 +196,6 @@ private:
 
     /*! @var iHasFoundService has the service been found ? */
     TBool iHasFoundService;
-
-    /*! @var iLog the log to send output to */
-    MLog& iLog;
     };
 
 #endif // __BTSERVICESEARCHER_H__

@@ -574,7 +574,6 @@ protected:
 private:
     TConnectionRole aConnectionRole; ///< Connection role
     TConnectState   aConnectState;   ///< Connect state
-    MLog*           iMLog;           ///< Pointer to log 
     CMessageServer* iServer;         ///< iServer The message receiving engine
     CMessageClient* iClient;         ///< iClient the message sending engine
 };

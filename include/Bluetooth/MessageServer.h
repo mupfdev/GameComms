@@ -11,7 +11,6 @@
 #include <btmanclient.h>
 
 class CMessageServiceAdvertiser;
-class MLog;
 
 /*! 
   @class CMessageServer
@@ -32,19 +31,17 @@ public:
   @function NewL
   
   @discussion Construct a CMessageServer
-  @param aLog the log to send output to
   @result a pointer to the created instance of CMessageServer
   */
-    static CMessageServer* NewL(MLog& aLog);
+    static CMessageServer* NewL();
 
 /*!
   @function NewLC
   
   @discussion Construct a CMessageServer
-  @param aLog the log to send output to
   @result a pointer to the created instance of CMessageServer
   */
-    static CMessageServer* NewLC(MLog& aLog);
+    static CMessageServer* NewLC();
 
 /*!
   @function ~CMessageServer
@@ -97,7 +94,7 @@ private:
 
   @discussion Constructs this object
   */
-    CMessageServer(MLog& aLog);
+    CMessageServer();
 
 /*! 
   @function ConstructL
@@ -125,9 +122,6 @@ private:
                                       TInt aChannel);
 
 private:
-    /*! @var iLog the log to send output to */
-    MLog& iLog;
-
     /*! @var iAdvertiser used to advertise this service */
     CMessageServiceAdvertiser* iAdvertiser;
 
@@ -170,4 +164,3 @@ private:
     };
 
 #endif // __MESSAGESERVER_H__
-

@@ -74,20 +74,11 @@ EXPORT_C CGameBTComms::~CGameBTComms()
 EXPORT_C void CGameBTComms::StartHostL(TUint16 aStartPlayers, TUint16 aMinPlayers)
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
-
-    aConnectionRole = EHost;
-    aConnectState   = EConnected;
-
-    iNotify->ClientConnected(0x1234, _L("mupfdev"), KErrNone);
-    iNotify->StartMultiPlayerGame(KErrNone);
 }
 
 EXPORT_C void CGameBTComms::StartClientL()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
-
-    aConnectionRole = EClient;
-    aConnectState   = EConnected;
 }
 
 EXPORT_C CGameBTComms::TConnectionRole CGameBTComms::ConnectionRole()
@@ -141,6 +132,14 @@ EXPORT_C TInt CGameBTComms::SendDataToClient(TUint16 aClientId, TDesC8& aData)
     TInt aError = KErrNone;
 
     DebugLog(LOG, "SendDataToClient(%u, %p)\n", aClientId, aData);
+
+    if (iClient->IsConnected())
+    {
+        if (iClient->IsReadyToSendMessage())
+        {
+            iClient->SendMessageL(aData);
+        }
+    }
 
     return aError;
 }
@@ -220,11 +219,15 @@ void CGameBTComms::ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUI
     iServer         = CMessageServer::NewL();
     iClient         = CMessageClient::NewL();
 
-#if 0
+    if (iServer)
+    {
+        DebugLog(LOG, "%s: Start Message Server\n", __FUNCTION__);
+        iServer->StartL();
+    }
+
     if (iClient)
     {
         DebugLog(LOG, "%s: Connect Message Client\n", __FUNCTION__);
         iClient->ConnectL();
     }
-#endif
 }

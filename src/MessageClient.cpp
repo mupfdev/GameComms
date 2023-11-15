@@ -4,6 +4,8 @@
 #include "MessageServiceSearcher.h"
 #include "BTPointToPoint.pan"
 
+_LIT8(KMessage, "Hello world");
+
 CMessageClient* CMessageClient::NewL()
     {
     CMessageClient* self = NewLC();
@@ -15,6 +17,7 @@ CMessageClient* CMessageClient::NewLC()
     {
     CMessageClient* self = new (ELeave) CMessageClient();
     CleanupStack::PushL(self);
+    self->ConstructL(KMessage);
     return self;
     }
 
@@ -38,8 +41,21 @@ CMessageClient::~CMessageClient()
     iSendingSocket.Close();
     iSocketServer.Close();
 
+    delete iMessage;
+    iMessage = NULL;
+
     delete iServiceSearcher;
     iServiceSearcher = NULL;
+    }
+
+void CMessageClient::ConstructL(const TDesC8& aMessage)
+    {
+    iServiceSearcher = CMessageServiceSearcher::NewL();
+
+    iMessage = aMessage.AllocL();
+
+	User::LeaveIfError(iSocketServer.Connect());
+
     }
 
 void CMessageClient::DoCancel()
@@ -214,7 +230,7 @@ void CMessageClient::WaitOnConnectionL()
 		SetActive();
 	}
 
-void CMessageClient::SendMessageL(const TDesC8& aMessage)
+void CMessageClient::SendMessageL()
     {
     if (iState != EConnected)
         {
@@ -228,7 +244,7 @@ void CMessageClient::SendMessageL(const TDesC8& aMessage)
         Cancel();
     }
 	iState = ESendingMessage;
-    iSendingSocket.Write(aMessage, iStatus);
+    iSendingSocket.Write(*iMessage, iStatus);
     SetActive();
     }
 

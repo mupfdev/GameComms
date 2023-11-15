@@ -91,7 +91,7 @@ public:
 
   @discussion Sends a message to a service on a remote machine.
   */    
-    void SendMessageL();
+    void SendMessageL(const TDesC8& aMessage);
 
 protected:    // from CActive
 /*!
@@ -137,15 +137,6 @@ private:
   */
     CMessageClient();
 
-/*!
-  @function ConstructL
-
-  @discussion Performs second phase construction of this object
-  @param aMessage the message to be sent to the remote machine
-  */
-    void ConstructL(const TDesC8& aMessage);
-
-
 private:
 
     /*!
@@ -177,9 +168,6 @@ private:
 
     /*! @var iServiceSearcher searches for service this client can connect to */
     CMessageServiceSearcher* iServiceSearcher;
-
-    /*! @var iMessage a copy of the message to send */
-    HBufC8* iMessage;
 
     /*! @var iSocketServer a connection to the socket server */
     RSocketServ iSocketServer;

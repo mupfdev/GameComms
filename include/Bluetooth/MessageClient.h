@@ -20,7 +20,9 @@ class CMessageServiceSearcher;
 class CMessageClient : public CActive
     {
 public:
-/*!
+    enum { KMaximumMessageLength = 512 };
+
+ /*!
   @function NewL
   
   @discussion Construct a CMessageClient
@@ -130,12 +132,23 @@ private:
   */
     void WaitOnConnectionL();
 
+    void RequestData();
+
 /*!
   @function CMessageClient
 
   @discussion Constructs this object
   */
     CMessageClient();
+
+/*!
+  @function ConstructL
+
+  @discussion Performs second phase construction of this object
+  @param aMessage the message to be sent to the remote machine
+  */
+    void ConstructL(const TDesC8& aMessage);
+
 
 private:
 
@@ -169,6 +182,9 @@ private:
     /*! @var iServiceSearcher searches for service this client can connect to */
     CMessageServiceSearcher* iServiceSearcher;
 
+    /*! @var iMessage a copy of the message to send */
+    HBufC8* iMessage;
+
     /*! @var iSocketServer a connection to the socket server */
     RSocketServ iSocketServer;
 
@@ -178,8 +194,11 @@ private:
     /*! @var iServiceClass the service class UUID to search for */
     TUUID iServiceClass;
 
-	/*! @var iDummyBuffer buffer needed for read on connection to server */
-	TBuf8 <1>  iDummyBuffer;
+	/*! @var iBuffer buffer needed for read on connection to server */
+	TBuf8 <KMaximumMessageLength>  iBuffer;
+
+    /*! @var iLen length of data read */
+    TSockXfrLength iLen;
 
     };
 

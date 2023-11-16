@@ -16,7 +16,6 @@
 #include <stdio.h>
 #include "GameBTComms.h"
 #include "GameBTCommsNotify.h"
-#include "MessageServer.h"
 #include "MessageClient.h"
 
 extern "C"
@@ -52,14 +51,6 @@ CGameBTComms::CGameBTComms()
 EXPORT_C CGameBTComms::~CGameBTComms()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
-
-    if (iServer)
-    {
-        iServer->StopL();
-    }
-
-    delete iServer;
-    iServer = NULL;
 
     delete iClient;
     iClient = NULL;
@@ -216,14 +207,7 @@ void CGameBTComms::ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUI
     iLog            = aLog;
     aConnectionRole = EIdle;
     aConnectState   = EConnecting;
-    iServer         = CMessageServer::NewL();
     iClient         = CMessageClient::NewL();
-
-    if (iServer)
-    {
-        DebugLog(LOG, "%s: Start Message Server\n", __FUNCTION__);
-        iServer->StartL();
-    }
 
     if (iClient)
     {

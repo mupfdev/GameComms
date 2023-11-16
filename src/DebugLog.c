@@ -11,6 +11,9 @@
 #include <stdio.h>
 #include "DebugLog.h"
 
+#define ENABLE_DEBUG_LOG
+
+#if defined ENABLE_DEBUG_LOG
 void DebugLog(const char* filename, const char* format, ...)
 {
     FILE*   log = NULL;
@@ -27,3 +30,8 @@ void DebugLog(const char* filename, const char* format, ...)
         fclose(log);
     }
 }
+#else
+
+void DebugLog(const char* filename, const char* format, ...) {}
+
+#endif /* defined ENABLE_DEBUG_LOG */

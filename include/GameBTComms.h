@@ -24,7 +24,6 @@
 #include <e32std.h>
 #include <es_sock.h>
 #include "GameBTCommsConsts.h"
-#include "MessageServer.h"
 #include "MessageClient.h"
 
 class MGameBTCommsNotify;
@@ -574,7 +573,6 @@ protected:
 private:
     TConnectionRole aConnectionRole; ///< Connection role
     TConnectState   aConnectState;   ///< Connect state
-    CMessageServer* iServer;         ///< iServer The message receiving engine
     CMessageClient* iClient;         ///< iClient the message sending engine
 };
 

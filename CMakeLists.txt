@@ -42,13 +42,12 @@ set(gamecomms_sources
     "${SRC_DIR}/Bluetooth/BTServiceAdvertiser.cpp"
     "${SRC_DIR}/Bluetooth/BTServiceSearcher.cpp"
     "${SRC_DIR}/Bluetooth/MessageClient.cpp"
-    "${SRC_DIR}/Bluetooth/MessageServer.cpp"
     "${SRC_DIR}/Bluetooth/MessageServiceAdvertiser.cpp"
     "${SRC_DIR}/Bluetooth/MessageServiceSearcher.cpp"
-    "${SRC_DIR}/Bluetooth/SdpAttributeParser.cpp")
+    "${SRC_DIR}/Bluetooth/SdpAttributeParser.cpp"
+    "${SRC_DIR}/Misc/minIni.c")
 
 add_library(gamecomms STATIC ${gamecomms_sources})
-
 build_dll(gamecomms dll ${UID1} ${UID2} ${UID3} "${gamecomms_libs}")
 
 target_compile_definitions(
@@ -72,4 +71,5 @@ target_include_directories(
     gamecomms
     PUBLIC
     ${INC_DIR}
-    ${INC_DIR}/Bluetooth/)
+    ${INC_DIR}/Bluetooth/
+    ${INC_DIR}/Misc/)

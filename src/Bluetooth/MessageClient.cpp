@@ -220,9 +220,8 @@ void CMessageClient::ConnectToServerL()
     SetActive();
     }
 
-
 void CMessageClient::RequestData()
-    {
+{
     iSendingSocket.RecvOneOrMore(iBuffer, 0, iStatus, iLen);
     SetActive();
     }

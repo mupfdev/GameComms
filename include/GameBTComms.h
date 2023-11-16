@@ -78,7 +78,7 @@ public:
 
 #if VERSION >= 9
 
-    enum TAcceptMode     { EConfirmClients };
+    enum THostAcceptMode { EConfirmClients };
 
 #endif /* VERSION >= 9 */
 
@@ -539,7 +539,7 @@ public:
     IMPORT_C void EndSession();                                       /* Return type unclear */
     IMPORT_C void SendData(TUint16 aClientId, TPtr8 aData);           /* Return type unclear */
     IMPORT_C void SetDiscoverabilityModeLimited(TBool aMode);         /* Return type unclear */
-    IMPORT_C void SetHostAcceptMode(TAcceptMode aMode);               /* Return type unclear */
+    IMPORT_C void SetHostAcceptMode(THostAcceptMode aMode);               /* Return type unclear */
     IMPORT_C void SetSearchModeLimited(TBool aMode);                  /* Return type unclear */
 
 #endif /* VERSION >= 9 */
@@ -571,8 +571,12 @@ protected:
     CGameBTBase*        iComms;
 
 private:
-    TConnectionRole aConnectionRole; ///< Connection role
-    TConnectState   aConnectState;   ///< Connect state
+    TConnectionRole iConnectionRole; ///< Connection role
+    TConnectState   iConnectState;   ///< Connect state
+    TGameState      iGameState;      ///< Game state
+    TUint16         iStartPlayers;   ///< Number of players required before the game can start
+    TUint16         iMinPlayers;     ///< Minimum number of players needed in game after starting to continue playing
+
     CMessageClient* iClient;         ///< iClient the message sending engine
 };
 

@@ -23,6 +23,10 @@ extern "C"
 #include "DebugLog.h"
 }
 
+#include "minIni.h"
+
+const char IniFile[] = "E:\\GameComms.ini";
+
 #define LOG "E:\\GameBTComms.txt"
 
 GLDEF_C TInt E32Dll(TDllReason /*aReason*/)
@@ -52,47 +56,47 @@ EXPORT_C CGameBTComms::~CGameBTComms()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
-    delete iClient;
-    iClient = NULL;
-
-    delete iNotify;
-    iNotify = NULL;
-
-    delete iNotify;
-    iLog = NULL;
+    if (iClient->IsConnected())
+    {
+        iClient->DisconnectL();
+    }
 }
 
 EXPORT_C void CGameBTComms::StartHostL(TUint16 aStartPlayers, TUint16 aMinPlayers)
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
+    iStartPlayers   = aStartPlayers;
+    iMinPlayers     = aMinPlayers;
+    iConnectionRole = EHost;
 }
 
 EXPORT_C void CGameBTComms::StartClientL()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
+    iConnectionRole = EClient;
 }
 
 EXPORT_C CGameBTComms::TConnectionRole CGameBTComms::ConnectionRole()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
-    return aConnectionRole;
+    return iConnectionRole;
 }
 
 EXPORT_C CGameBTComms::TGameState CGameBTComms::GameState()
 {
-    TGameState aState = EPlay;
-
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
-    return aState;
+    return iGameState;
 }
 
 EXPORT_C CGameBTComms::TConnectState CGameBTComms::ConnectState()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
-    return aConnectState;
+    return iConnectState;
 }
 
 EXPORT_C TInt CGameBTComms::GetLocalDeviceName(THostName& aHostName)
@@ -100,6 +104,12 @@ EXPORT_C TInt CGameBTComms::GetLocalDeviceName(THostName& aHostName)
     TInt aError = KErrNone;
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
+    char device_name[32] = { 0 };
+
+    ini_gets("Config", "DeviceName", "bosley", (char*)device_name, 32, IniFile);
+
+    aHostName.Copy(TPtrC8((const TText8*)device_name));
 
     return aError;
 }
@@ -141,6 +151,14 @@ EXPORT_C TInt CGameBTComms::SendDataToAllClients(TDesC8& aData)
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
+    if (iClient->IsConnected())
+    {
+        if (iClient->IsReadyToSendMessage())
+        {
+            iClient->SendMessageL(aData);
+        }
+    }
+
     return aError;
 }
 
@@ -149,6 +167,14 @@ EXPORT_C TInt CGameBTComms::SendDataToHost(TDesC8& aData)
     TInt aError = KErrNone;
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
+    if (iClient->IsConnected())
+    {
+        if (iClient->IsReadyToSendMessage())
+        {
+            iClient->SendMessageL(aData);
+        }
+    }
 
     return aError;
 }
@@ -205,8 +231,9 @@ void CGameBTComms::ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUI
     iNotify         = aEventHandler;
     iGameUID        = aGameUID;
     iLog            = aLog;
-    aConnectionRole = EIdle;
-    aConnectState   = EConnecting;
+    iConnectionRole = EIdle;
+    iConnectState   = ENotConnected;
+    iGameState      = EGameOver;
     iClient         = CMessageClient::NewL();
 
     if (iClient)

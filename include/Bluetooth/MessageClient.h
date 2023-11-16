@@ -94,8 +94,8 @@ public:
   @discussion Sends a message to a service on a remote machine.
   */    
     void SendMessageL(const TDesC8& aMessage);
-
-protected:    // from CActive
+    
+    protected:    // from CActive
 /*!
   @function DoCancel
   
@@ -124,13 +124,6 @@ private:
   @discussion Connects to the service
   */    
     void DisconnectFromServerL();
-
-/*!
-  @function WaitOnConnectionL()
-
-  @discussion Wait for data or disconnection
-  */
-    void WaitOnConnectionL();
 
     void RequestData();
 

@@ -78,7 +78,7 @@ void CMessageClient::RunL()
                 break;
             case EGettingService:
             case EGettingConnection:
-                // Connection error
+                 // Connection error
                 iState = EWaitingToGetDevice;
                 break;
 			case EConnected:

@@ -75,6 +75,7 @@ public:
     enum TConnectionRole { EIdle, EClient, EHost };
     enum TGameState      { EGameOver, EPlay, EPause };
     enum TConnectState   { ENotConnected, EConnecting, EConnected };
+    enum TGameCommsState { EInit, ERegister, EActive };
 
 #if VERSION >= 9
 
@@ -544,9 +545,9 @@ public:
 
 #endif /* VERSION >= 9 */
 
+    void Update();
 
 private:
-
 
 protected:
 
@@ -574,6 +575,7 @@ private:
     TConnectionRole iConnectionRole; ///< Connection role
     TConnectState   iConnectState;   ///< Connect state
     TGameState      iGameState;      ///< Game state
+    TGameCommsState iGameCommsState; ///< Current main state
     TUint16         iStartPlayers;   ///< Number of players required before the game can start
     TUint16         iMinPlayers;     ///< Minimum number of players needed in game after starting to continue playing
 

@@ -171,7 +171,8 @@ FILE_PATTERNS          = *.c \
                          *.ice
 RECURSIVE              = NO
 EXCLUDE                = src/Bluetooth/* \
-                         include/Bluetooth/*
+                         include/Bluetooth/* \
+                         include/Misc/*
 EXCLUDE_SYMLINKS       = NO
 EXCLUDE_PATTERNS       =
 EXCLUDE_SYMBOLS        =

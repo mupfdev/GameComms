@@ -19,6 +19,8 @@ The project is hosted on [GitHub](https://github.com/mupfdev/GameComms).
 
 # Protocol (Draft)
 
+## Registration Sequence
+
 GameComms can be configured using the file `E:\GameComms.ini`:
 
 ```ini
@@ -47,13 +49,28 @@ ROL:H
 | NET | Host name and port as specified in `GameComms.ini` |
 | ROL | Selected connection role, H = Host or C = Client   |
 
-## Message Handling (Client)
+## Message Handling
 
-Tbd.
+All incoming and outgoing messages consist of 3 bytes each.  The first
+byte represents either the recipient, the sender or a command specifier:
 
-## Message Handling (Host)
+| Byte 1 | Description       |
+| :----: | :---------------- |
+| `0x00` | Client 0 (Host)   |
+| `0x01` | Client 1          |
+| `0x02` | Client 2          |
+| `0x03` | Client 3          |
+| `0x42` | Broadcast         |
+| `0x43` | Connect           |
+| `0x44` | Disconnect        |
+| `0x50` | Pause Game        |
+| `0x52` | Resume Game       |
 
-Tbd.
+The second byte holds the payload.  If the first byte is a command
+specifier, the payload contains either the ID of the sender or the
+receiver.
+
+The byte sequence is always terminated with a newline character `\n`.
 
 # Versions
 

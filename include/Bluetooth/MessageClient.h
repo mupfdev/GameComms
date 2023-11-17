@@ -95,6 +95,8 @@ public:
   */    
     void SendMessageL(const TDesC8& aMessage);
     
+    void PollMessagesL(char aBuffer[KMaximumMessageLength], TUint16& Length);
+
     protected:    // from CActive
 /*!
   @function DoCancel
@@ -188,7 +190,7 @@ private:
     TUUID iServiceClass;
 
 	/*! @var iBuffer buffer needed for read on connection to server */
-	TBuf8 <KMaximumMessageLength>  iBuffer;
+	TBuf8 <KMaximumMessageLength> iBuffer;
 
     /*! @var iLen length of data read */
     TSockXfrLength iLen;

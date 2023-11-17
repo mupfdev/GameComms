@@ -75,7 +75,8 @@ public:
     enum TConnectionRole { EIdle, EClient, EHost };
     enum TGameState      { EGameOver, EPlay, EPause };
     enum TConnectState   { ENotConnected, EConnecting, EConnected };
-    enum TGameCommsState { EInit, ERegister, EActive };
+    enum TGameCommsState { EInit, ERegisterUID, ERegisterDeviceName, ERegisterNetConfig, ERegisterRole, EHandleMessages };
+    enum                 { KQueueSize = 512 };
 
 #if VERSION >= 9
 
@@ -572,14 +573,21 @@ protected:
     CGameBTBase*        iComms;
 
 private:
-    TConnectionRole iConnectionRole; ///< Connection role
-    TConnectState   iConnectState;   ///< Connect state
-    TGameState      iGameState;      ///< Game state
-    TGameCommsState iGameCommsState; ///< Current main state
-    TUint16         iStartPlayers;   ///< Number of players required before the game can start
-    TUint16         iMinPlayers;     ///< Minimum number of players needed in game after starting to continue playing
+    TConnectionRole iConnectionRole;     ///< Connection role
+    TConnectionRole iConnectionRoleTemp; ///< Connection role, temporary until registration is complete
+    TConnectState   iConnectState;       ///< Connect state
+    TGameState      iGameState;          ///< Game state
+    TGameCommsState iGameCommsState;     ///< Current main state
+    TUint16         iStartPlayers;       ///< Number of players required before the game can start
+    TUint16         iMinPlayers;         ///< Minimum number of players needed in game after starting to continue playing
+    CMessageClient* iClient;             ///< iClient the message sending engine
 
-    CMessageClient* iClient;         ///< iClient the message sending engine
+    TBufC8 <KQueueSize> iToClientQueue;
+    TBufC8 <KQueueSize> iToHostQueue;
+    TBufC8 <KQueueSize> iToAllQueue;
+
+    char    iRecvBuffer[512];
+    TUint16 iRecvLength;
 };
 
 #endif /* __GAMEBTCOMMS_H */

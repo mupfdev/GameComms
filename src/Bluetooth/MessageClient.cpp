@@ -1,5 +1,10 @@
 /* Copyright (c) 2002, Nokia. All rights reserved */
 
+extern "C"
+{
+#include <string.h>
+#undef NULL
+}
 #include "MessageClient.h"
 #include "MessageServiceSearcher.h"
 #include "BTPointToPoint.pan"
@@ -221,7 +226,7 @@ void CMessageClient::ConnectToServerL()
     }
 
 void CMessageClient::RequestData()
-{
+    {
     iSendingSocket.RecvOneOrMore(iBuffer, 0, iStatus, iLen);
     SetActive();
     }
@@ -244,6 +249,13 @@ void CMessageClient::SendMessageL(const TDesC8& aMessage)
     iSendingSocket.Write(*iMessage, iStatus);
     SetActive();
     }
+
+void CMessageClient::PollMessagesL(char aBuffer[KMaximumMessageLength], TUint16 & Length)
+{
+    memcpy(aBuffer, iBuffer.Ptr(), iBuffer.Length());
+    Length = iBuffer.Length();
+    iBuffer.Zero();
+}
 
 TBool CMessageClient::IsReadyToSendMessage()
     {

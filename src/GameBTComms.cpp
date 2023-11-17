@@ -10,24 +10,29 @@
  *
  **/
 
-#include <e32def.h>
-#include <e32std.h>
+extern "C"
+{
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
+#undef NULL
+}
+
+#include <e32def.h>
+#include <e32std.h>
+
 #include "GameBTComms.h"
 #include "GameBTCommsNotify.h"
 #include "MessageClient.h"
-
-extern "C"
-{
 #include "DebugLog.h"
-}
 
 #include "minIni.h"
 
 const char IniFile[] = "E:\\GameComms.ini";
 
 #define LOG "E:\\GameBTComms.txt"
+
+_LIT8(KNewLine, "\n");
 
 GLDEF_C TInt E32Dll(TDllReason /*aReason*/)
 {
@@ -55,7 +60,6 @@ CGameBTComms::CGameBTComms()
 EXPORT_C CGameBTComms::~CGameBTComms()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
-    Update();
 
     if (iClient->IsConnected())
     {
@@ -66,24 +70,27 @@ EXPORT_C CGameBTComms::~CGameBTComms()
 EXPORT_C void CGameBTComms::StartHostL(TUint16 aStartPlayers, TUint16 aMinPlayers)
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
-    Update();
 
-    iStartPlayers   = aStartPlayers;
-    iMinPlayers     = aMinPlayers;
-    iConnectionRole = EHost;
+    iStartPlayers       = aStartPlayers;
+    iMinPlayers         = aMinPlayers;
+    iConnectionRoleTemp = EHost;
+
+    Update();
 }
 
 EXPORT_C void CGameBTComms::StartClientL()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
     Update();
 
-    iConnectionRole = EClient;
+    iConnectionRoleTemp = EClient;
 }
 
 EXPORT_C CGameBTComms::TConnectionRole CGameBTComms::ConnectionRole()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
     Update();
 
     return iConnectionRole;
@@ -92,6 +99,7 @@ EXPORT_C CGameBTComms::TConnectionRole CGameBTComms::ConnectionRole()
 EXPORT_C CGameBTComms::TGameState CGameBTComms::GameState()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
     Update();
 
     return iGameState;
@@ -100,6 +108,7 @@ EXPORT_C CGameBTComms::TGameState CGameBTComms::GameState()
 EXPORT_C CGameBTComms::TConnectState CGameBTComms::ConnectState()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
     Update();
 
     return iConnectState;
@@ -110,13 +119,14 @@ EXPORT_C TInt CGameBTComms::GetLocalDeviceName(THostName& aHostName)
     TInt aError = KErrNone;
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
-    Update();
 
     char device_name[32] = { 0 };
 
     ini_gets("Config", "DeviceName", "bosley", (char*)device_name, 32, IniFile);
 
     aHostName.Copy(TPtrC8((const TText8*)device_name));
+
+    Update();
 
     return aError;
 }
@@ -131,6 +141,7 @@ EXPORT_C TInt CGameBTComms::DisconnectClient(TUint16 aClientId)
     TInt aError = KErrNone;
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
     Update();
 
     return aError;
@@ -138,54 +149,39 @@ EXPORT_C TInt CGameBTComms::DisconnectClient(TUint16 aClientId)
 
 EXPORT_C TInt CGameBTComms::SendDataToClient(TUint16 aClientId, TDesC8& aData)
 {
-    TInt aError = KErrNone;
+    TInt  aError = KErrNone;
 
-    DebugLog(LOG, "SendDataToClient(%u, %p)\n", aClientId, aData);
+    DebugLog(LOG, "SendDataToClient(%u, 0x%X)\n", aClientId, aData);
+
     Update();
-
-    if (iClient->IsConnected())
-    {
-        if (iClient->IsReadyToSendMessage())
-        {
-            iClient->SendMessageL(aData);
-        }
-    }
 
     return aError;
 }
 
 EXPORT_C TInt CGameBTComms::SendDataToAllClients(TDesC8& aData)
 {
-    TInt aError = KErrNone;
+    TInt  aError = KErrNone;
+    TPtr8 aPtr   = iToAllQueue.Des();
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
-    Update();
 
-    if (iClient->IsConnected())
-    {
-        if (iClient->IsReadyToSendMessage())
-        {
-            iClient->SendMessageL(aData);
-        }
-    }
+    aPtr.Append(aData);
+
+    Update();
 
     return aError;
 }
 
 EXPORT_C TInt CGameBTComms::SendDataToHost(TDesC8& aData)
 {
-    TInt aError = KErrNone;
+    TInt  aError = KErrNone;
+    TPtr8 aPtr   = iToHostQueue.Des();
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
-    Update();
 
-    if (iClient->IsConnected())
-    {
-        if (iClient->IsReadyToSendMessage())
-        {
-            iClient->SendMessageL(aData);
-        }
-    }
+    aPtr.Append(aData);
+
+    Update();
 
     return aError;
 }
@@ -195,6 +191,7 @@ EXPORT_C TInt CGameBTComms::ContinueMultiPlayerGame()
     TInt aError = KErrNone;
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
     Update();
 
     return aError;
@@ -205,6 +202,7 @@ EXPORT_C TInt CGameBTComms::ReconnectL(TBool aMustReconnectToAll = ETrue)
     TInt aError = KErrNone;
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
     Update();
 
     return aError;
@@ -215,6 +213,7 @@ EXPORT_C TInt CGameBTComms::PauseMultiPlayerGame()
     TInt aError = KErrNone;
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
     Update();
 
     return aError;
@@ -225,6 +224,7 @@ EXPORT_C TInt CGameBTComms::EndMultiPlayerGame()
     TInt aError = KErrNone;
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
     Update();
 
     return aError;
@@ -235,6 +235,7 @@ EXPORT_C TBool CGameBTComms::IsShowingDeviceSelectDlg()
     TBool aState = EFalse;
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
+
     Update();
 
     return aState;
@@ -242,6 +243,8 @@ EXPORT_C TBool CGameBTComms::IsShowingDeviceSelectDlg()
 
 void CGameBTComms::Update()
 {
+    char buffer[512] = { 0 };
+
     switch (iGameCommsState)
     {
         case EInit:
@@ -250,30 +253,110 @@ void CGameBTComms::Update()
             {
                 if (iClient->IsReadyToSendMessage())
                 {
-                    iGameCommsState = ERegister;
+                    iGameCommsState = ERegisterUID;
                 }
             }
             break;
         }
-        case ERegister:
+        case ERegisterUID:
         {
-            if (iClient->IsConnected())
+            if (iClient->IsConnected() && iClient->IsReadyToSendMessage())
             {
-                if (iClient->IsReadyToSendMessage())
-                {
-                    /* Send registration information to server once. */
-
-                    /* Game UID */
-
-                    /* Device Name */
-
-                    /* Host or Client? */
-                }
+                sprintf(buffer, (const char*)"UID:0x%8X\n", (unsigned int)iGameUID);
+                iClient->SendMessageL(TPtrC8((const TText8*)buffer));
+                iGameCommsState = ERegisterDeviceName;
             }
-            iGameCommsState = EActive;
             break;
         }
-        case EActive:
+        case ERegisterDeviceName:
+        {
+            if (iClient->IsConnected() && iClient->IsReadyToSendMessage())
+            {
+                char device_name[32] = { 0 };
+                ini_gets("Config", "DeviceName", "bosley", (char*)device_name, 32, IniFile);
+                sprintf(buffer, (const char*)"DID:%s\n", device_name);
+                iClient->SendMessageL(TPtrC8((const TText8*)buffer));
+                iGameCommsState = ERegisterNetConfig;
+            }
+            break;
+        }
+        case ERegisterNetConfig:
+        {
+            if (iClient->IsConnected() && iClient->IsReadyToSendMessage())
+            {
+                char host[32] = { 0 };
+                long port     = ini_getbool("Network", "Port", 8889, IniFile);
+
+                ini_gets("Network", "Host", "localhost", (char*)host, 32, IniFile);
+
+                sprintf(buffer, (const char*)"NET:%s:%u\n", host, (unsigned short)port);
+                iClient->SendMessageL(TPtrC8((const TText8*)buffer));
+                iGameCommsState = ERegisterRole;
+            }
+            break;
+        }
+        case ERegisterRole:
+            if (iClient->IsConnected() && iClient->IsReadyToSendMessage())
+            {
+                char role;
+
+                if (iConnectionRoleTemp == EHost)
+                {
+                    role = 'H';
+                }
+                else
+                {
+                    role = 'C';
+                }
+
+                sprintf(buffer, (const char*)"ROL:%c\n", role);
+                iClient->SendMessageL(TPtrC8((const TText8*)buffer));
+                iGameCommsState = EHandleMessages;
+            }
+            break;
+        case EHandleMessages:
+            iConnectionRole = iConnectionRoleTemp; /* Asign selected connection role */
+
+            /* Handle incoming messages. */
+            iClient->PollMessagesL(iRecvBuffer, iRecvLength);
+
+            if (iRecvLength > 0)
+            {
+                DebugLog(LOG, "%s", iRecvBuffer);
+
+                if (iConnectionRole == EClient)
+                {
+                    TDesC8 Data = TPtrC8((TUint8*)iRecvBuffer);
+                    iNotify->ReceiveDataFromHost(Data);
+                }
+                else if (iConnectionRole == EHost)
+                {
+                    /* Todo. */
+                }
+                memcpy(iRecvBuffer, 0, 512);
+                iRecvLength = 0;
+            }
+
+            /* Handle outgoing messages. */
+            if (iConnectionRole == EClient)
+            {
+                /* Send to host. */
+
+                TPtr8 aPtr = iToHostQueue.Des();
+
+                if (iClient->IsConnected() && iClient->IsReadyToSendMessage() && aPtr.Length() > 0)
+                {
+                    iClient->SendMessageL(iToClientQueue);
+                    iClient->SendMessageL(KNewLine);
+                    aPtr.Zero();
+                }
+            }
+            else if (iConnectionRole == EHost)
+            {
+                /* Send to client. */
+
+                /* Send to all clients. */
+            }
             break;
     }
 }
@@ -282,13 +365,20 @@ void CGameBTComms::ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUI
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
-    iNotify         = aEventHandler;
-    iGameUID        = aGameUID;
-    iLog            = aLog;
-    iConnectionRole = EIdle;
-    iConnectState   = ENotConnected;
-    iGameState      = EGameOver;
-    iClient         = CMessageClient::NewL();
+    iNotify               = aEventHandler;
+    iGameUID              = aGameUID;
+    iLog                  = aLog;
+    iConnectionRole       = EIdle;
+    iConnectionRoleTemp   = EIdle;
+    iConnectState         = ENotConnected;
+    iGameState            = EGameOver;
+    iClient               = CMessageClient::NewL();
+
+    iToClientQueue.AllocL();
+    iToHostQueue.AllocL();
+    iToAllQueue.AllocL();
+
+    iRecvLength = 0;
 
     if (iClient)
     {

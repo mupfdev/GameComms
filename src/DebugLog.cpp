@@ -1,4 +1,4 @@
-/** @file DebugLog.c
+/** @file DebugLog.cpp
  *
  *  A simple file logger for debugging purposes.
  *

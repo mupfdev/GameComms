@@ -38,7 +38,7 @@ set(gamecomms_sources
     "${SRC_DIR}/GameBTComms.cpp"
     "${SRC_DIR}/GameBTCommsNotify.cpp"
     "${SRC_DIR}/SGEDebugLog.cpp"
-    "${SRC_DIR}/DebugLog.c"
+    "${SRC_DIR}/DebugLog.cpp"
     "${SRC_DIR}/Bluetooth/BTServiceSearcher.cpp"
     "${SRC_DIR}/Bluetooth/MessageClient.cpp"
     "${SRC_DIR}/Bluetooth/MessageServiceSearcher.cpp"

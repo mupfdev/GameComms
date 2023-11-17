@@ -17,6 +17,44 @@ connect several devices via the Internet.
 
 The project is hosted on [GitHub](https://github.com/mupfdev/GameComms).
 
+# Protocol (Draft)
+
+GameComms can be configured using the file `E:\GameComms.ini`:
+
+```ini
+[Config]
+DeviceName="mupfdev"
+[Network]
+Host="mupf.dev"
+Port=9888
+```
+
+Invalid or non-existent settings are replaced by a default.
+
+When you start a multiplayer game, a registration sequence is sent to the server:
+
+```
+UID:0x10005B8B
+DID:mupfdev
+NET:mupf.dev:8889
+ROL:H
+```
+
+| KEY | Description                                        |
+| :-: | :------------------------------------------------- |
+| UID | Unique Game ID                                     |
+| DID | DeviceName as specified in `GameComms.ini`         |
+| NET | Host name and port as specified in `GameComms.ini` |
+| ROL | Selected connection role, H = Host or C = Client   |
+
+## Message Handling (Client)
+
+Tbd.
+
+## Message Handling (Host)
+
+Tbd.
+
 # Versions
 
 Since I can only speculate about the development status of the

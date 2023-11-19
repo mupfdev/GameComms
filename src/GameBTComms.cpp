@@ -86,9 +86,15 @@ EXPORT_C void CGameBTComms::StartClientL()
 {
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
-    Update();
-
     iConnectionRoleTemp = EClient;
+
+    iNotify->HostSelected(KErrNone);
+    iConnectState = EConnecting;
+
+    iNotify->HostConnected(KErrNone);
+    iConnectState = EConnected;
+
+    Update();
 }
 
 EXPORT_C CGameBTComms::TConnectionRole CGameBTComms::ConnectionRole()
@@ -153,7 +159,28 @@ EXPORT_C TInt CGameBTComms::DisconnectClient(TUint16 aClientId)
 
 EXPORT_C TInt CGameBTComms::SendDataToClient(TUint16 aClientId, TDesC8& aData)
 {
-    TInt  aError = KErrNone;
+    TInt aError = KErrNone;
+
+    switch (aClientId)
+    {
+        case 1:
+        {
+
+            break;
+        }
+        case 2:
+        {
+
+            break;
+        }
+        case 3:
+        {
+
+            break;
+        }
+        default:
+            break;
+    }
 
     DebugLog(LOG, "SendDataToClient(%u, 0x%X)\n", aClientId, aData);
 
@@ -165,11 +192,8 @@ EXPORT_C TInt CGameBTComms::SendDataToClient(TUint16 aClientId, TDesC8& aData)
 EXPORT_C TInt CGameBTComms::SendDataToAllClients(TDesC8& aData)
 {
     TInt  aError = KErrNone;
-    TPtr8 aPtr   = iToAllQueue.Des();
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
-
-    aPtr.Append(aData);
 
     Update();
 
@@ -183,6 +207,7 @@ EXPORT_C TInt CGameBTComms::SendDataToHost(TDesC8& aData)
 
     DebugLog(LOG, "%s\n", __FUNCTION__);
 
+    /* Todo: How to properly queue and send data? */
     aPtr.Append(aData);
 
     Update();
@@ -277,7 +302,9 @@ void CGameBTComms::Update()
             if (iClient->IsConnected() && iClient->IsReadyToSendMessage())
             {
                 char device_name[32] = { 0 };
+
                 ini_gets("Config", "DeviceName", "bosley", (char*)device_name, 32, IniFile);
+
                 sprintf(buffer, (const char*)"DID:%s\n", device_name);
                 iClient->SendMessageL(TPtrC8((const TText8*)buffer));
                 iGameCommsState = ERegisterNetConfig;
@@ -315,29 +342,35 @@ void CGameBTComms::Update()
 
                 sprintf(buffer, (const char*)"ROL:%c\n", role);
                 iClient->SendMessageL(TPtrC8((const TText8*)buffer));
+
+                iNotify->StartMultiPlayerGame(KErrNone);
+
+                iGameState      = EPlay;
                 iGameCommsState = EHandleMessages;
             }
             break;
         case EHandleMessages:
             iConnectionRole = iConnectionRoleTemp; /* Asign selected connection role */
 
-            /* Handle incoming messages. */
             iClient->PollMessagesL(iRecvBuffer, iRecvLength);
 
-            if (iRecvLength > 0)
+            /* Handle incoming messages. */
+            if (iGameState == EPlay)
             {
-                char aCommand = iRecvBuffer[0];
-                char aPayload = iRecvBuffer[1];
-                char aNewLine = iRecvBuffer[2];
-
-                DebugLog(LOG, "%s", iRecvBuffer);
-
-                if (iConnectionRole == EClient)
+                if (iRecvLength > 0)
                 {
-                    if (aNewLine == '\n')
+                    char aCommand = iRecvBuffer[0];
+                    char aPayload = iRecvBuffer[1];
+                    char aNewLine = iRecvBuffer[2];
+
+                    DebugLog(LOG, "%s", iRecvBuffer);
+
+                    if (iConnectionRole == EClient)
                     {
-                        switch (aCommand)
+                        if (aNewLine == '\n')
                         {
+                            switch (aCommand)
+                            {
                             case 0x00: // Host
                             case 0x42: // Broadcast
                             {
@@ -359,37 +392,16 @@ void CGameBTComms::Update()
                                 break;
                             default:
                                 break;
+                            }
                         }
                     }
+                    else if (iConnectionRole == EHost)
+                    {
+                        /* Todo. */
+                    }
+                    memcpy(iRecvBuffer, 0, 512);
+                    iRecvLength = 0;
                 }
-                else if (iConnectionRole == EHost)
-                {
-                    /* Todo. */
-                }
-                memcpy(iRecvBuffer, 0, 512);
-                iRecvLength = 0;
-            }
-
-            /* Handle outgoing messages. */
-            if (iConnectionRole == EClient)
-            {
-                /* Send to host. */
-
-                TPtr8 aPtr = iToHostQueue.Des();
-
-                if (iClient->IsConnected() && iClient->IsReadyToSendMessage() && aPtr.Length() > 0)
-                {
-                    iClient->SendMessageL(KHost);
-                    iClient->SendMessageL(iToHostQueue);
-                    iClient->SendMessageL(KNewLine);
-                    aPtr.Zero();
-                }
-            }
-            else if (iConnectionRole == EHost)
-            {
-                /* Send to client. */
-
-                /* Send to all clients. */
             }
             break;
     }
@@ -407,12 +419,9 @@ void CGameBTComms::ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUI
     iConnectState         = ENotConnected;
     iGameState            = EGameOver;
     iClient               = CMessageClient::NewL();
+    iRecvLength           = 0;
 
-    iToClientQueue.AllocL();
     iToHostQueue.AllocL();
-    iToAllQueue.AllocL();
-
-    iRecvLength = 0;
 
     if (iClient)
     {

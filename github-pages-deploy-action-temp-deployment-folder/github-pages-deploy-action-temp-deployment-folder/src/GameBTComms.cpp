@@ -32,10 +32,6 @@ const char IniFile[] = "E:\\GameComms.ini";
 
 #define LOG "E:\\GameBTComms.txt"
 
-_LIT8(KHost,    "\x00");
-_LIT8(KClient1, "\x01");
-_LIT8(KClient2, "\x02");
-_LIT8(KClient3, "\x03");
 _LIT8(KNewLine, "\n");
 
 GLDEF_C TInt E32Dll(TDllReason /*aReason*/)
@@ -326,41 +322,12 @@ void CGameBTComms::Update()
 
             if (iRecvLength > 0)
             {
-                char aCommand = iRecvBuffer[0];
-                char aPayload = iRecvBuffer[1];
-                char aNewLine = iRecvBuffer[2];
-
                 DebugLog(LOG, "%s", iRecvBuffer);
 
                 if (iConnectionRole == EClient)
                 {
-                    if (aNewLine == '\n')
-                    {
-                        switch (aCommand)
-                        {
-                            case 0x00: // Host
-                            case 0x42: // Broadcast
-                            {
-                                TDesC8 Data = TPtrC8((TUint8*)aPayload);
-                                iNotify->ReceiveDataFromHost(Data);
-                                break;
-                            }
-                            case 0x44: // Disconnect
-                            {
-                                break;
-                            }
-                            case 0x50: // Pause Game
-                            {
-                                iNotify->PauseMultiPlayerGame();
-                                break;
-                            }
-                            case 0x52: // Resume Game
-                                iNotify->ContinueMultiPlayerGame();
-                                break;
-                            default:
-                                break;
-                        }
-                    }
+                    TDesC8 Data = TPtrC8((TUint8*)iRecvBuffer);
+                    iNotify->ReceiveDataFromHost(Data);
                 }
                 else if (iConnectionRole == EHost)
                 {
@@ -379,8 +346,7 @@ void CGameBTComms::Update()
 
                 if (iClient->IsConnected() && iClient->IsReadyToSendMessage() && aPtr.Length() > 0)
                 {
-                    iClient->SendMessageL(KHost);
-                    iClient->SendMessageL(iToHostQueue);
+                    iClient->SendMessageL(iToClientQueue);
                     iClient->SendMessageL(KNewLine);
                     aPtr.Zero();
                 }

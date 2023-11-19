@@ -1,0 +1,6 @@
+<map id="CGameBTComms" name="CGameBTComms">
+<area shape="rect" id="node1" title="This is the main interface to the library exposing all multidevice games operations available to a de..." alt="" coords="114,95,250,121"/>
+<area shape="rect" id="node2" title=" " alt="" coords="5,5,68,32"/>
+<area shape="rect" id="node3" href="$classMGameBTCommsNotify.html" title="This is the notification interface provided by the library." alt="" coords="93,5,271,32"/>
+<area shape="rect" id="node4" href="$classRSGEDebugLog.html" title="Provides output to a debug log on device (E:\debug.log). This slows down performance markedly." alt="" coords="295,5,418,32"/>
+</map>

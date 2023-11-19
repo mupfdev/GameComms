@@ -1,6 +1,6 @@
-/** @file main.cpp
+/** @file GameBTComms.cpp
  *
- *  GameComms BT interface client
+ *  Class that provides games with Bluetooth comms.
  *
  *  Note that it is the game's responsibility to provide the UI to
  *  accompany this (with the exception of the BT device selection UI)
@@ -33,4 +33,5 @@ void loop() {
     {
         Serial.write(SerialBT.read());
     }
+    delay(20);
 }

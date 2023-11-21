@@ -42,7 +42,7 @@ var classCGameBTComms =
     [ "SendDataToHost", "classCGameBTComms.html#a24ac4a62151a3c566fd59a8c97d0bd81", null ],
     [ "StartClientL", "classCGameBTComms.html#aa4589230547c8f582a302f7b7caa2b12", null ],
     [ "StartHostL", "classCGameBTComms.html#aa0c79c2129e8226fb4e8bce715400ca1", null ],
-    [ "Update", "classCGameBTComms.html#a022435253e332fe87bc2513dcd1d1f18", null ],
+    [ "Update", "classCGameBTComms.html#adbae0dbb670b8347cf06d75d81ec16f7", null ],
     [ "iComms", "classCGameBTComms.html#a5cb68c3a2e6c9842b7996b38e12a1bf2", null ],
     [ "iGameUID", "classCGameBTComms.html#ab6470052b5f0dd2287351ae0a96d919e", null ],
     [ "iLog", "classCGameBTComms.html#a8f0547a8b9d2fa83b26386c86153937f", null ],

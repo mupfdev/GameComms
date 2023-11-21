@@ -17,7 +17,7 @@
  * @def VERSION
  *      Version of GameComms implementation.
  */
-#define VERSION 0
+#define VERSION 1
 
 #include <btsdp.h>
 #include <e32base.h>
@@ -78,11 +78,11 @@ public:
     enum TGameCommsState { EInit, ERegisterUID, ERegisterDeviceName, ERegisterNetConfig, ERegisterRole, EHandleMessages };
     enum                 { KQueueSize = 512 };
 
-#if VERSION >= 9
+#if VERSION >= 10
 
     enum THostAcceptMode { EConfirmClients };
 
-#endif /* VERSION >= 9 */
+#endif /* VERSION >= 10 */
 
 public:
     /**
@@ -215,7 +215,7 @@ public:
      */
     IMPORT_C TInt GetLocalDeviceName(THostName& aHostName);
 
-#if VERSION < 9
+#if VERSION < 10
 
     /**
      * @name  Disconnect
@@ -256,7 +256,7 @@ public:
      */
     IMPORT_C void Disconnect();
 
-#endif /* VERSION > 9 */
+#endif /* VERSION > 10 */
 
     /**
      * @name  DisconnectClient
@@ -530,7 +530,7 @@ public:
      */
     IMPORT_C TBool IsShowingDeviceSelectDlg();
 
-#if VERSION >= 9
+#if VERSION >= 10
 
     IMPORT_C TInt Connect();                                          /* Expects KErrNone */
     IMPORT_C TInt DeclareRemoteDevice(const TDeviceDetails& aDevice); /* Expects KErrNone */
@@ -544,7 +544,7 @@ public:
     IMPORT_C void SetHostAcceptMode(THostAcceptMode aMode);               /* Return type unclear */
     IMPORT_C void SetSearchModeLimited(TBool aMode);                  /* Return type unclear */
 
-#endif /* VERSION >= 9 */
+#endif /* VERSION >= 10 */
 
     void Update();
 
@@ -582,12 +582,10 @@ private:
     TUint16         iMinPlayers;         ///< Minimum number of players needed in game after starting to continue playing
     CMessageClient* iClient;             ///< iClient the message sending engine
 
-    TBufC8 <KQueueSize> iToClientQueue;
-    TBufC8 <KQueueSize> iToHostQueue;
-    TBufC8 <KQueueSize> iToAllQueue;
-
-    char    iRecvBuffer[512];
+    char    iRecvBuffer[KQueueSize];
     TUint16 iRecvLength;
+
+    TBufC8 <KQueueSize> iToHostQueue;;
 };
 
 #endif /* __GAMEBTCOMMS_H */

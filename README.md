@@ -52,18 +52,18 @@ ROL:H
 ## Message Handling
 
 All messages sent from the N-Gage to the ESP32 start with a 2 byte
-header.  The first byte contains the intended recipient (`01h` to `05h`)
-and the second byte contains the length of the subsequent data. The end
-of the message is terminated with a new line character (`0Ah`).
+header.  The first byte contains the intended recipient `01h` to `05h`
+and the second byte contains the length of the subsequent data.  The end
+of the message is terminated with a new line character `0Ah`.
 
-Although the first byte would not be mandatory for received messages, it
-is still sent. This could later contain the purpose of a message, for
-example. In addition, the protocol remains consistent in both
-directions.
+Although the ESP32 hub should only forward messages intended for the
+target device, the first byte of a received message always contains its
+sender. This is important as the host must pass this information on to
+the callback function `MGameBTCommsNotify::ReceiveDataFromClient()`.
 
-Possible values for the first byte:
+Possible values for byte 1:
 
-- `00h` Intended not to be used
+- `00h` Intentionally unused
 - `01h` Host
 - `02h` Client 1
 - `03h` Client 2

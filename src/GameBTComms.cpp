@@ -344,10 +344,27 @@ void CGameBTComms::Update(TUint16 aClientId = EInvalid, const char *aData = NULL
                 iClient->SendMessageL(TPtrC8((const TUint8 *)buffer, offset));
             }
 
-            /* Handle incoming messages. */
+            /* Handle incoming messages. Work-in-progress. */
             iClient->PollMessagesL(iRecvBuffer, iRecvLength);
-            /* Tbd. */
 
+            if (iRecvLength > 0 && iRecvBuffer[iRecvLength - 1] == '\n')
+            {
+                for (TInt index = 2; index < iRecvLength - 1; index += 1)
+                {
+                    buffer[index - 2] = iRecvBuffer[index]; // Cut-off header and trailing new line.
+                }
+
+                if (iConnectionRole == EHost)
+                {
+                    /* TEST */
+                    iNotify->ReceiveDataFromClient((TUint16)iRecvBuffer[0], TPtrC8((const TUint8 *)buffer, iRecvLength - 3));
+                }
+                else if (iConnectionRole == EClient)
+                {
+                    /* TEST */
+                    iNotify->ReceiveDataFromHost(TPtrC8((const TUint8 *)buffer, iRecvLength - 3));
+                }
+            }
             break;
     }
 }

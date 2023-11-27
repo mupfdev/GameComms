@@ -89,8 +89,8 @@ $(document).ready(function(){initNavTree('index.html',''); initResizable(); });
 </div><!--header-->
 <div class="contents">
 <div class="textblock"><p><a class="anchor" id="md_README"></a> <a href="https://github.com/mupfdev/GameComms/actions/workflows/documentation.yaml"><img src="https://github.com/mupfdev/GameComms/actions/workflows/documentation.yaml/badge.svg" alt="documentation" style="pointer-events: none;" class="inline"/></a></p>
-<p>GameComms is a connectivity library specialised for multidevice games programming on the Series 60 platform to connect up to four devices via Bluetooth. GameComms was part of the proprietary Nokia N-Gage SDK and was used in 42 of a total of 55 games.</p>
-<p>This project is an attempt to reverse engineer the GameComms library and create versions that can be used as drop-in replacements for the 10 different versions that were included in the official games.</p>
+<p>GameComms is a connectivity library specialised for multidevice games programming on the Series 60 platform to connect up to four devices via Bluetooth. GameComms was part of the proprietary Nokia N-Gage SDK and was used in 44 of a total of 57 games.</p>
+<p>This project is an attempt to reverse engineer the GameComms library and create versions that can be used as drop-in replacements for the 11 different versions that were included in the official games.</p>
 <p>The primary idea is to send the data handled by GameComms serially to a WiFi-enabled microcontroller or a modern PC, for example, in order to connect several devices via the Internet.</p>
 <p>The project is hosted on <a href="https://github.com/mupfdev/GameComms">GitHub</a>.</p>
 <h1><a class="anchor" id="autotoc_md1"></a>
@@ -123,31 +123,17 @@ Registration Sequence</h2>
 </table>
 <h2><a class="anchor" id="autotoc_md3"></a>
 Message Handling</h2>
-<p>All incoming and outgoing messages consist of 3 bytes each. The first byte represents either the recipient, the sender or a command specifier:</p>
-<table class="markdownTable">
-<tr class="markdownTableHead">
-<th class="markdownTableHeadCenter">Byte 1   </th><th class="markdownTableHeadLeft">Description    </th></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter"><code>0x00</code>   </td><td class="markdownTableBodyLeft">Client 0 (Host)    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyCenter"><code>0x01</code>   </td><td class="markdownTableBodyLeft">Client 1    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter"><code>0x02</code>   </td><td class="markdownTableBodyLeft">Client 2    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyCenter"><code>0x03</code>   </td><td class="markdownTableBodyLeft">Client 3    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter"><code>0x42</code>   </td><td class="markdownTableBodyLeft">Broadcast    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyCenter"><code>0x43</code>   </td><td class="markdownTableBodyLeft">Connect    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter"><code>0x44</code>   </td><td class="markdownTableBodyLeft">Disconnect    </td></tr>
-<tr class="markdownTableRowEven">
-<td class="markdownTableBodyCenter"><code>0x50</code>   </td><td class="markdownTableBodyLeft">Pause Game    </td></tr>
-<tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter"><code>0x52</code>   </td><td class="markdownTableBodyLeft">Resume Game   </td></tr>
-</table>
-<p>The second byte holds the payload. If the first byte is a command specifier, the payload contains either the ID of the sender or the receiver.</p>
-<p>The byte sequence is always terminated with a newline character <code>\n</code>.</p>
+<p>All messages sent from the N-Gage to the ESP32 start with a 2 byte header. The first byte contains the intended recipient (<code>01h</code> to <code>05h</code>) and the second byte contains the length of the subsequent data. The end of the message is terminated with a new line character (<code>0Ah</code>).</p>
+<p>Although the first byte would not be mandatory for received messages, it is still sent. This could later contain the purpose of a message, for example. In addition, the protocol remains consistent in both directions.</p>
+<p>Possible values for the first byte:</p>
+<ul>
+<li><code>00h</code> Intended not to be used</li>
+<li><code>01h</code> Host</li>
+<li><code>02h</code> Client 1</li>
+<li><code>03h</code> Client 2</li>
+<li><code>04h</code> Client 3</li>
+<li><code>05h</code> Broadcast</li>
+</ul>
 <h1><a class="anchor" id="autotoc_md4"></a>
 Versions</h1>
 <p>Since I can only speculate about the development status of the individual versions, I have created an overview of all games here that make use of the library. Sorted by file size of the <code>gamecomms.dll</code> and by game title.</p>
@@ -215,31 +201,35 @@ Versions</h1>
 <tr class="markdownTableRowEven">
 <td class="markdownTableBodyCenter">06   </td><td class="markdownTableBodyLeft">Xanadu Next   </td><td class="markdownTableBodyLeft">bb02377c5361597f8d8503f5de584845   </td><td class="markdownTableBodyCenter">57    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter">07   </td><td class="markdownTableBodyLeft">Ashen   </td><td class="markdownTableBodyLeft">d4c10fcebfb6da8da6b757aa8392b6d7   </td><td class="markdownTableBodyCenter">57    </td></tr>
+<td class="markdownTableBodyCenter">07   </td><td class="markdownTableBodyLeft">Snakes   </td><td class="markdownTableBodyLeft">f07f48ee44cca60046f40ce41858a160   </td><td class="markdownTableBodyCenter">57    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyCenter">07   </td><td class="markdownTableBodyLeft">Bomberman   </td><td class="markdownTableBodyLeft">d4c10fcebfb6da8da6b757aa8392b6d7   </td><td class="markdownTableBodyCenter">57    </td></tr>
+<td class="markdownTableBodyCenter">08   </td><td class="markdownTableBodyLeft">Ashen   </td><td class="markdownTableBodyLeft">d4c10fcebfb6da8da6b757aa8392b6d7   </td><td class="markdownTableBodyCenter">57    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter">07   </td><td class="markdownTableBodyLeft">Colin McRae Rally 2005   </td><td class="markdownTableBodyLeft">d4c10fcebfb6da8da6b757aa8392b6d7   </td><td class="markdownTableBodyCenter">57    </td></tr>
+<td class="markdownTableBodyCenter">08   </td><td class="markdownTableBodyLeft">Bomberman   </td><td class="markdownTableBodyLeft">d4c10fcebfb6da8da6b757aa8392b6d7   </td><td class="markdownTableBodyCenter">57    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyCenter">07   </td><td class="markdownTableBodyLeft">Crash Nitro Kart   </td><td class="markdownTableBodyLeft">d4c10fcebfb6da8da6b757aa8392b6d7   </td><td class="markdownTableBodyCenter">57    </td></tr>
+<td class="markdownTableBodyCenter">08   </td><td class="markdownTableBodyLeft">Colin McRae Rally 2005   </td><td class="markdownTableBodyLeft">d4c10fcebfb6da8da6b757aa8392b6d7   </td><td class="markdownTableBodyCenter">57    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter">07   </td><td class="markdownTableBodyLeft">Operation Shadow   </td><td class="markdownTableBodyLeft">d4c10fcebfb6da8da6b757aa8392b6d7   </td><td class="markdownTableBodyCenter">57    </td></tr>
+<td class="markdownTableBodyCenter">08   </td><td class="markdownTableBodyLeft">Crash Nitro Kart   </td><td class="markdownTableBodyLeft">d4c10fcebfb6da8da6b757aa8392b6d7   </td><td class="markdownTableBodyCenter">57    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyCenter">08   </td><td class="markdownTableBodyLeft">Tiger Woods PGA Tour 2004   </td><td class="markdownTableBodyLeft">6ac8b1a1e490b367a1d5e46bb720fe70   </td><td class="markdownTableBodyCenter">57    </td></tr>
+<td class="markdownTableBodyCenter">08   </td><td class="markdownTableBodyLeft">Operation Shadow   </td><td class="markdownTableBodyLeft">d4c10fcebfb6da8da6b757aa8392b6d7   </td><td class="markdownTableBodyCenter">57    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter">09   </td><td class="markdownTableBodyLeft">Glimmerati   </td><td class="markdownTableBodyLeft">827df54717bc210daa96aef9e12de4a3   </td><td class="markdownTableBodyCenter">63    </td></tr>
+<td class="markdownTableBodyCenter">09   </td><td class="markdownTableBodyLeft">Tiger Woods PGA Tour 2004   </td><td class="markdownTableBodyLeft">6ac8b1a1e490b367a1d5e46bb720fe70   </td><td class="markdownTableBodyCenter">57    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyCenter">09   </td><td class="markdownTableBodyLeft">ONE   </td><td class="markdownTableBodyLeft">827df54717bc210daa96aef9e12de4a3   </td><td class="markdownTableBodyCenter">63    </td></tr>
+<td class="markdownTableBodyCenter">10   </td><td class="markdownTableBodyLeft">Glimmerati   </td><td class="markdownTableBodyLeft">827df54717bc210daa96aef9e12de4a3   </td><td class="markdownTableBodyCenter">63    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter">09   </td><td class="markdownTableBodyLeft">Rifts: Promise of Power   </td><td class="markdownTableBodyLeft">827df54717bc210daa96aef9e12de4a3   </td><td class="markdownTableBodyCenter">63    </td></tr>
+<td class="markdownTableBodyCenter">10   </td><td class="markdownTableBodyLeft">ONE   </td><td class="markdownTableBodyLeft">827df54717bc210daa96aef9e12de4a3   </td><td class="markdownTableBodyCenter">63    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyCenter">09   </td><td class="markdownTableBodyLeft">System Rush   </td><td class="markdownTableBodyLeft">827df54717bc210daa96aef9e12de4a3   </td><td class="markdownTableBodyCenter">63    </td></tr>
+<td class="markdownTableBodyCenter">10   </td><td class="markdownTableBodyLeft">Rifts: Promise of Power   </td><td class="markdownTableBodyLeft">827df54717bc210daa96aef9e12de4a3   </td><td class="markdownTableBodyCenter">63    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter">09   </td><td class="markdownTableBodyLeft">The Roots: Gates of Chaos   </td><td class="markdownTableBodyLeft">827df54717bc210daa96aef9e12de4a3   </td><td class="markdownTableBodyCenter">63    </td></tr>
+<td class="markdownTableBodyCenter">10   </td><td class="markdownTableBodyLeft">System Rush   </td><td class="markdownTableBodyLeft">827df54717bc210daa96aef9e12de4a3   </td><td class="markdownTableBodyCenter">63    </td></tr>
 <tr class="markdownTableRowEven">
-<td class="markdownTableBodyCenter">10   </td><td class="markdownTableBodyLeft">Asphalt: Urban GT 2   </td><td class="markdownTableBodyLeft">75536306ef48b1928b4562890d01c9c6   </td><td class="markdownTableBodyCenter">63    </td></tr>
+<td class="markdownTableBodyCenter">10   </td><td class="markdownTableBodyLeft">The Roots: Gates of Chaos   </td><td class="markdownTableBodyLeft">827df54717bc210daa96aef9e12de4a3   </td><td class="markdownTableBodyCenter">63    </td></tr>
 <tr class="markdownTableRowOdd">
-<td class="markdownTableBodyCenter">10   </td><td class="markdownTableBodyLeft">Warhammer 40,000: Glory in Death   </td><td class="markdownTableBodyLeft">75536306ef48b1928b4562890d01c9c6   </td><td class="markdownTableBodyCenter">63   </td></tr>
+<td class="markdownTableBodyCenter">11   </td><td class="markdownTableBodyLeft">Asphalt: Urban GT 2   </td><td class="markdownTableBodyLeft">75536306ef48b1928b4562890d01c9c6   </td><td class="markdownTableBodyCenter">63    </td></tr>
+<tr class="markdownTableRowEven">
+<td class="markdownTableBodyCenter">11   </td><td class="markdownTableBodyLeft">Habbo Islands   </td><td class="markdownTableBodyLeft">75536306ef48b1928b4562890d01c9c6   </td><td class="markdownTableBodyCenter">63    </td></tr>
+<tr class="markdownTableRowOdd">
+<td class="markdownTableBodyCenter">11   </td><td class="markdownTableBodyLeft">Warhammer 40,000: Glory in Death   </td><td class="markdownTableBodyLeft">75536306ef48b1928b4562890d01c9c6   </td><td class="markdownTableBodyCenter">63   </td></tr>
 </table>
 <h1><a class="anchor" id="autotoc_md5"></a>
 License</h1>

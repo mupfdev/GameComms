@@ -13,10 +13,10 @@
 #ifndef __GAMEBTCOMMS_H
 #define __GAMEBTCOMMS_H
 
-/**
- * @def VERSION
- *      Version of GameComms implementation.
- */
+ /**
+  * @def VERSION
+  *      Version of GameComms implementation.
+  */
 #define VERSION 1
 
 #include <btsdp.h>
@@ -66,21 +66,41 @@ public:
      * @return A new CGameBTComms object.
      *
      */
-    IMPORT_C static CGameBTComms* NewL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog = NULL);
+    IMPORT_C static CGameBTComms *NewL(MGameBTCommsNotify *aEventHandler, TUint32 aGameUID, RSGEDebugLog *aLog = NULL);
     IMPORT_C ~CGameBTComms();
 
 public:
-    enum                 { KMaxPlayers         = KBTMaxPlayers };
-    enum                 { KServerConnectionId = KBTHostConnectionId };
-    enum TConnectionRole { EIdle, EClient, EHost };
-    enum TGameState      { EGameOver, EPlay, EPause };
-    enum TConnectState   { ENotConnected, EConnecting, EConnected };
-    enum TGameCommsState { EInit, ERegisterUID, ERegisterDeviceName, ERegisterNetConfig, ERegisterRole, EHandleMessages };
-    enum                 { KQueueSize = 512 };
+    enum
+    {
+        KMaxPlayers = KBTMaxPlayers
+    };
+    enum
+    {
+        KServerConnectionId = KBTHostConnectionId
+    };
+    enum TConnectionRole
+    {
+        EIdle, EClient, EHost
+    };
+    enum TGameState
+    {
+        EGameOver, EPlay, EPause
+    };
+    enum TConnectState
+    {
+        ENotConnected, EConnecting, EConnected
+    };
+    enum TGameCommsState
+    {
+        EInit, ERegisterUID, ERegisterDeviceName, ERegisterNetConfig, ERegisterRole, EHandleMessages
+    };
 
 #if VERSION >= 10
 
-    enum THostAcceptMode { EConfirmClients };
+    enum THostAcceptMode
+    {
+        EConfirmClients
+    };
 
 #endif /* VERSION >= 10 */
 
@@ -213,7 +233,7 @@ public:
      *
      * @retval KErrNone If successful
      */
-    IMPORT_C TInt GetLocalDeviceName(THostName& aHostName);
+    IMPORT_C TInt GetLocalDeviceName(THostName &aHostName);
 
 #if VERSION < 10
 
@@ -317,7 +337,7 @@ public:
      * @retval KErrGameOver If in a game over state
      *
      */
-    IMPORT_C TInt SendDataToClient(TUint16 aClientId, TDesC8& aData);
+    IMPORT_C TInt SendDataToClient(TUint16 aClientId, TDesC8 &aData);
 
     /**
      * @name  SendDataToAllClients
@@ -343,7 +363,7 @@ public:
      * @retval KErrGameOver If in a game over state
      *
      */
-    IMPORT_C TInt SendDataToAllClients(TDesC8& aData);
+    IMPORT_C TInt SendDataToAllClients(TDesC8 &aData);
 
     /**
      * @name  SendDataToHost
@@ -368,7 +388,7 @@ public:
      * @retval KErrGameOver If in a game over state
      *
      */
-    IMPORT_C TInt SendDataToHost(TDesC8& aData);
+    IMPORT_C TInt SendDataToHost(TDesC8 &aData);
 
     /**
      * @name  ContinueMultiPlayerGame
@@ -533,7 +553,7 @@ public:
 #if VERSION >= 10
 
     IMPORT_C TInt Connect();                                          /* Expects KErrNone */
-    IMPORT_C TInt DeclareRemoteDevice(const TDeviceDetails& aDevice); /* Expects KErrNone */
+    IMPORT_C TInt DeclareRemoteDevice(const TDeviceDetails &aDevice); /* Expects KErrNone */
     IMPORT_C TInt SetBluetoothPowerState(TBool aState);               /* Expects KErrNone */
     IMPORT_C void SetLocalDeviceName(THostName aHostName);            /* Return type unclear */
     IMPORT_C void BluetoothPowerState(TBool aState);                  /* Return type unclear */
@@ -546,7 +566,7 @@ public:
 
 #endif /* VERSION >= 10 */
 
-    void Update();
+    void Update(TUint16 aClientId = 0, char *aData = NULL, TUint16 aLength = 0, char *sDebug = NULL);
 
 private:
 
@@ -564,13 +584,13 @@ protected:
      *
      * @brief EPOC Constructor
      */
-    void ConstructL(MGameBTCommsNotify* aEventHandler, TUint32 aGameUID, RSGEDebugLog* aLog);
+    void ConstructL(MGameBTCommsNotify *aEventHandler, TUint32 aGameUID, RSGEDebugLog *aLog);
 
 protected:
-    MGameBTCommsNotify* iNotify;  ///< Stores a pointer to the user object that will receive callbacks
+    MGameBTCommsNotify *iNotify;  ///< Stores a pointer to the user object that will receive callbacks
     TUint32             iGameUID; ///< UID of the game to be played
-    RSGEDebugLog*       iLog;     ///< Pointer to file of debug logging (if included in build!)
-    CGameBTBase*        iComms;
+    RSGEDebugLog *iLog;     ///< Pointer to file of debug logging (if included in build!)
+    CGameBTBase *iComms;
 
 private:
     TConnectionRole iConnectionRole;     ///< Connection role
@@ -580,12 +600,10 @@ private:
     TGameCommsState iGameCommsState;     ///< Current main state
     TUint16         iStartPlayers;       ///< Number of players required before the game can start
     TUint16         iMinPlayers;         ///< Minimum number of players needed in game after starting to continue playing
-    CMessageClient* iClient;             ///< iClient the message sending engine
+    CMessageClient *iClient;             ///< iClient the message sending engine
 
-    char    iRecvBuffer[KQueueSize];
-    TUint16 iRecvLength;
-
-    TBufC8 <KQueueSize> iToHostQueue;;
+    char     iRecvBuffer[512];
+    TUint16  iRecvLength;
 };
 
 #endif /* __GAMEBTCOMMS_H */

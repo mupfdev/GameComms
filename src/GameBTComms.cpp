@@ -14,6 +14,7 @@ extern "C"
 {
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #undef NULL
 }
@@ -31,12 +32,6 @@ extern "C"
 const char IniFile[] = "E:\\GameComms.ini";
 
 #define LOG "E:\\GameBTComms.txt"
-
-_LIT8(KHost, "\x00");
-_LIT8(KClient1, "\x01");
-_LIT8(KClient2, "\x02");
-_LIT8(KClient3, "\x03");
-_LIT8(KNewLine, "\n");
 
 GLDEF_C TInt E32Dll(TDllReason /*aReason*/)
 {
@@ -143,7 +138,6 @@ EXPORT_C TInt CGameBTComms::SendDataToClient(TUint16 aClientId, TDesC8 &aData)
     TInt aError = KErrNone;
 
     Update(aClientId, (char *)aData.Ptr(), aData.Length(), __FUNCTION__);
-
     return aError;
 }
 
@@ -151,7 +145,7 @@ EXPORT_C TInt CGameBTComms::SendDataToAllClients(TDesC8 &aData)
 {
     TInt aError = KErrNone;
 
-    Update(0xff, (char *)aData.Ptr(), aData.Length(), __FUNCTION__);
+    Update(EToAll, (char *)aData.Ptr(), aData.Length(), __FUNCTION__);
 
     return aError;
 }
@@ -160,7 +154,7 @@ EXPORT_C TInt CGameBTComms::SendDataToHost(TDesC8 &aData)
 {
     TInt aError = KErrNone;
 
-    Update(0, (char*)aData.Ptr(), aData.Length(), __FUNCTION__);
+    Update(EToHost, (char *)aData.Ptr(), aData.Length());
 
     return aError;
 }
@@ -210,35 +204,44 @@ EXPORT_C TBool CGameBTComms::IsShowingDeviceSelectDlg()
     return aState;
 }
 
-void CGameBTComms::Update(TUint16 aClientId = 0, char *aData = NULL, TUint16 aLength = 0, char *sDebug = NULL)
+void CGameBTComms::Update(TUint16 aClientId = EInvalid, const char *aData = NULL, TUint16 aLength = 0, const char *sDebug = NULL)
 {
-    char buffer[512] = { 0 };
+    char    buffer[512] = { 0 };
+    TUint16 offset = 0;
+
+    if ((aLength > 0) && (aClientId != EInvalid))
+    {
+        TUint8 pos                      = iMessageQueue[aClientId - 1].Pos;
+        TUint8 message[KMaxMessageSize] = { 0 };
+
+
+        if (pos >= KMaxQueueSize)
+        {
+            DebugLog(LOG, "Error: queue %u full.\n", pos);
+            return;
+        }
+
+        if (aLength >= KMaxMessageSize - 3)
+        {
+            DebugLog(LOG, "Error: message to big. Increase queue size.\n");
+        }
+
+        message[0] = aClientId;
+        message[1] = aLength;
+        for (TInt index = 2; index < aLength + 2; index += 1)
+        {
+            message[index] = aData[index - 2];
+        }
+        message[aLength + 2] = '\n';
+
+        memcpy(&iMessageQueue[aClientId - 1].Queue[pos], message, aLength + 3);
+        iMessageQueue[aClientId - 1].Length[pos]  = aLength + 3;
+        iMessageQueue[aClientId - 1].Pos         += 1;
+    }
 
     if (iClient->IsReadyToSendMessage() == EFalse)
     {
-        if (aLength > 0)
-        {
-            if (sDebug != NULL)
-            {
-                DebugLog(LOG, "%s: ", sDebug);
-            }
-            DebugLog(LOG, "Data sent but not yet ready to send messages. We need a queue!\n");
-        }
-
         return;
-    }
-
-    /* Handle outgoing messages first. */
-    if (aLength > 0)
-    {
-        for (int aIndex = 0; aIndex < aLength; aIndex += 1)
-        {
-            sprintf(buffer, (const char *)"%u %u: %02X ", aClientId, aLength, aData[aIndex]);
-
-            DebugLog(LOG, "Data: %s\n", buffer);
-            iClient->SendMessageL(TPtrC8((const TText8 *)buffer));
-            iClient->SendMessageL(KNewLine);
-        }
     }
 
     switch (iGameCommsState)
@@ -253,7 +256,7 @@ void CGameBTComms::Update(TUint16 aClientId = 0, char *aData = NULL, TUint16 aLe
         }
         case ERegisterUID:
         {
-            sprintf(buffer, (const char *)"UID:0x%8X\n", (unsigned int)iGameUID);
+            sprintf(buffer, (const char *)"UID:0x%08X\n", (unsigned int)iGameUID);
             iClient->SendMessageL(TPtrC8((const TText8 *)buffer));
             iGameCommsState = ERegisterDeviceName;
             break;
@@ -316,52 +319,35 @@ void CGameBTComms::Update(TUint16 aClientId = 0, char *aData = NULL, TUint16 aLe
         case EHandleMessages:
             iConnectionRole = iConnectionRoleTemp; /* Asign selected connection role */
 
-            /* Handle incoming messages. */
-            iClient->PollMessagesL(iRecvBuffer, iRecvLength);
-
-            if (iRecvLength > 0)
+            /* Handle pending messages. */
+            for (TInt queueIndex = 0; queueIndex < EToAll; queueIndex += 1)
             {
-                char aCommand = iRecvBuffer[0];
-                char aPayload = iRecvBuffer[1];
-                char aNewLine = iRecvBuffer[2];
-
-                if (iConnectionRole == EClient && iGameState == EPlay)
+                for (TInt msgIndex = 0; msgIndex < iMessageQueue[queueIndex].Pos; msgIndex += 1)
                 {
-                    if (aNewLine == '\n')
+                    TUint8 *queue  = iMessageQueue[queueIndex].Queue[msgIndex];
+                    TUint8  length = iMessageQueue[queueIndex].Length[msgIndex];
+
+                    if (length > 0)
                     {
-                        switch (aCommand)
+                        for (TInt bufIndex = 0; bufIndex < length; bufIndex += 1)
                         {
-                            case 0x00: // Host
-                            case 0x42: // Broadcast
-                            {
-                                TDesC8 Data = TPtrC8((TUint8 *)aPayload);
-                                iNotify->ReceiveDataFromHost(Data);
-                                break;
-                            }
-                            case 0x44: // Disconnect
-                            {
-                                break;
-                            }
-                            case 0x50: // Pause Game
-                            {
-                                iNotify->PauseMultiPlayerGame();
-                                break;
-                            }
-                            case 0x52: // Resume Game
-                                iNotify->ContinueMultiPlayerGame();
-                                break;
-                            default:
-                                break;
+                            buffer[offset] = queue[bufIndex];
+                            offset += 1;
                         }
                     }
                 }
-                else if (iConnectionRole == EHost)
-                {
-                    /* Todo. */
-                }
-                memcpy(iRecvBuffer, 0, 512);
-                iRecvLength = 0;
+                iMessageQueue[queueIndex].Pos = 0;
             }
+
+            if (offset > 1)
+            {
+                iClient->SendMessageL(TPtrC8((const TUint8 *)buffer, offset));
+            }
+
+            /* Handle incoming messages. */
+            iClient->PollMessagesL(iRecvBuffer, iRecvLength);
+            /* Tbd. */
+
             break;
     }
 }
@@ -377,6 +363,11 @@ void CGameBTComms::ConstructL(MGameBTCommsNotify *aEventHandler, TUint32 aGameUI
     iGameState          = EGameOver;
     iClient             = CMessageClient::NewL();
     iRecvLength         = 0;
+
+    for (TInt aIndex = 0; aIndex <= EToAll; aIndex += 1)
+    {
+        memset(&iMessageQueue[aIndex], 0, sizeof(TMessageQueue));
+    }
 
     if (iClient)
     {

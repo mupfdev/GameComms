@@ -85,6 +85,7 @@ $(document).ready(function(){initNavTree('classCGameBTComms.html',''); initResiz
 
 <div class="header">
   <div class="summary">
+<a href="#nested-classes">Classes</a> &#124;
 <a href="classCGameBTComms-members.html">List of all members</a>  </div>
   <div class="headertitle">
 <div class="title">CGameBTComms Class Reference</div>  </div>
@@ -116,6 +117,11 @@ Collaboration diagram for CGameBTComms:</div>
 </map>
 <center><span class="legend">[<a target="top" href="graph_legend.html">legend</a>]</span></center></div>
 <table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="nested-classes"></a>
+Classes</h2></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structCGameBTComms_1_1TMessageQueue.html">TMessageQueue</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr><td colspan="2"><div class="groupHeader">StartHostL</div></td></tr>
@@ -212,6 +218,21 @@ Public Member Functions</h2></td></tr>
 <br />
  }</td></tr>
 <tr class="separator:aa71d213eb73e9d3f9c3d9af8668b1679"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ad11858b5649d9df2425b25eb4d06b616"><td class="memItemLeft" align="right" valign="top"><a id="ad11858b5649d9df2425b25eb4d06b616"></a>enum &#160;</td><td class="memItemRight" valign="bottom"><b>TRecipientId</b> { <br />
+&#160;&#160;<b>EToHost</b> = 1
+, <b>EToClient1</b> = 2
+, <b>EToClient2</b> = 3
+, <b>EToClient3</b> = 4
+, <br />
+&#160;&#160;<b>EToAll</b> = 5
+, <b>EInvalid</b> = 0xff
+<br />
+ }</td></tr>
+<tr class="separator:ad11858b5649d9df2425b25eb4d06b616"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af26a17077b977e78176638baa9f7e5bc"><td class="memItemLeft" align="right" valign="top"><a id="af26a17077b977e78176638baa9f7e5bc"></a>enum &#160;</td><td class="memItemRight" valign="bottom">{ <b>KMaxQueueSize</b> = 32
+, <b>KMaxMessageSize</b> = 64
+ }</td></tr>
+<tr class="separator:af26a17077b977e78176638baa9f7e5bc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac2bfab68db6a57417922b7fcac45d795"><td class="memItemLeft" align="right" valign="top">static IMPORT_C <a class="el" href="classCGameBTComms.html">CGameBTComms</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classCGameBTComms.html#ac2bfab68db6a57417922b7fcac45d795">NewL</a> (<a class="el" href="classMGameBTCommsNotify.html">MGameBTCommsNotify</a> *aEventHandler, TUint32 aGameUID, <a class="el" href="classRSGEDebugLog.html">RSGEDebugLog</a> *aLog=NULL)</td></tr>
 <tr class="memdesc:ac2bfab68db6a57417922b7fcac45d795"><td class="mdescLeft">&#160;</td><td class="mdescRight">Creates a new <a class="el" href="classCGameBTComms.html" title="This is the main interface to the library exposing all multidevice games operations available to a de...">CGameBTComms</a> object.  <a href="classCGameBTComms.html#ac2bfab68db6a57417922b7fcac45d795">More...</a><br /></td></tr>
 <tr class="separator:ac2bfab68db6a57417922b7fcac45d795"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -238,9 +259,9 @@ CGameBTBase *&#160;</td><td class="memItemRight" valign="bottom"><b>iComms</b></
 <tr class="memitem:a6943267d0d06acafd4b038caea6ae5e4"><td class="memItemLeft" align="right" valign="top">IMPORT_C TBool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classCGameBTComms.html#a6943267d0d06acafd4b038caea6ae5e4">IsShowingDeviceSelectDlg</a> ()</td></tr>
 <tr class="memdesc:a6943267d0d06acafd4b038caea6ae5e4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Determine whether the Symbian device selection dialog is on display.  <a href="classCGameBTComms.html#a6943267d0d06acafd4b038caea6ae5e4">More...</a><br /></td></tr>
 <tr class="separator:a6943267d0d06acafd4b038caea6ae5e4"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:adbae0dbb670b8347cf06d75d81ec16f7"><td class="memItemLeft" align="right" valign="top"><a id="adbae0dbb670b8347cf06d75d81ec16f7"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>Update</b> (TUint16 aClientId=0, char *aData=NULL, TUint16 aLength=0, char *sDebug=NULL)</td></tr>
-<tr class="separator:adbae0dbb670b8347cf06d75d81ec16f7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9ac473c1f62ff0a65cdfe9a4f4c89e86"><td class="memItemLeft" align="right" valign="top"><a id="a9ac473c1f62ff0a65cdfe9a4f4c89e86"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>Update</b> (TUint16 aClientId=EInvalid, const char *aData=NULL, TUint16 aLength=0, const char *sDebug=NULL)</td></tr>
+<tr class="separator:a9ac473c1f62ff0a65cdfe9a4f4c89e86"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a82d49b263fade65d34869870c1d91e56"><td class="memItemLeft" align="right" valign="top"><a id="a82d49b263fade65d34869870c1d91e56"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classCGameBTComms.html#a82d49b263fade65d34869870c1d91e56">CGameBTComms</a> ()</td></tr>
 <tr class="memdesc:a82d49b263fade65d34869870c1d91e56"><td class="mdescLeft">&#160;</td><td class="mdescRight">Default C++ Constructor. <br /></td></tr>
@@ -249,6 +270,12 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>Update</b> (TUint16 a
 void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classCGameBTComms.html#ad9aec4958676c821ab2d34c74de533a1">ConstructL</a> (<a class="el" href="classMGameBTCommsNotify.html">MGameBTCommsNotify</a> *aEventHandler, TUint32 aGameUID, <a class="el" href="classRSGEDebugLog.html">RSGEDebugLog</a> *aLog)</td></tr>
 <tr class="memdesc:ad9aec4958676c821ab2d34c74de533a1"><td class="mdescLeft">&#160;</td><td class="mdescRight">EPOC Constructor. <br /></td></tr>
 <tr class="separator:ad9aec4958676c821ab2d34c74de533a1"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a7039daf9afd84fc1975a60b98583108d"><td class="memItemLeft" align="right" valign="top"><a id="a7039daf9afd84fc1975a60b98583108d"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>MessageBox</b> (const TDesC &amp;aMessage)</td></tr>
+<tr class="separator:a7039daf9afd84fc1975a60b98583108d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a41ea5284729c490b5b1538fdbba6a64b"><td class="memItemLeft" align="right" valign="top"><a id="a41ea5284729c490b5b1538fdbba6a64b"></a>
+void&#160;</td><td class="memItemRight" valign="bottom"><b>HandleForegroundEventL</b> (TBool aForeground)</td></tr>
+<tr class="separator:a41ea5284729c490b5b1538fdbba6a64b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><p>This is the main interface to the library exposing all multidevice games operations available to a developer. </p>

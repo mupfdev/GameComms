@@ -94,6 +94,22 @@ public:
     {
         EInit, ERegisterUID, ERegisterDeviceName, ERegisterNetConfig, ERegisterRole, EHandleMessages
     };
+    enum TRecipientId
+    {
+        EToHost = 1, EToClient1 = 2, EToClient2 = 3, EToClient3 = 4, EToAll = 5, EInvalid = 0xff
+    };
+    enum
+    {
+        KMaxQueueSize   = 32,
+        KMaxMessageSize = 64
+    };
+    typedef struct
+    {
+        TUint8 Pos;
+        TUint8 Length[KMaxQueueSize];
+        TUint8 Queue[KMaxQueueSize][KMaxMessageSize];
+
+    } TMessageQueue;
 
 #if VERSION >= 10
 
@@ -566,7 +582,7 @@ public:
 
 #endif /* VERSION >= 10 */
 
-    void Update(TUint16 aClientId = 0, char *aData = NULL, TUint16 aLength = 0, char *sDebug = NULL);
+    void Update(TUint16 aClientId = EInvalid, const char *aData = NULL, TUint16 aLength = 0, const char *sDebug = NULL);
 
 private:
 
@@ -586,6 +602,9 @@ protected:
      */
     void ConstructL(MGameBTCommsNotify *aEventHandler, TUint32 aGameUID, RSGEDebugLog *aLog);
 
+    void MessageBox(const TDesC &aMessage);
+    void HandleForegroundEventL(TBool aForeground);
+
 protected:
     MGameBTCommsNotify *iNotify;  ///< Stores a pointer to the user object that will receive callbacks
     TUint32             iGameUID; ///< UID of the game to be played
@@ -602,8 +621,10 @@ private:
     TUint16         iMinPlayers;         ///< Minimum number of players needed in game after starting to continue playing
     CMessageClient *iClient;             ///< iClient the message sending engine
 
-    char     iRecvBuffer[512];
-    TUint16  iRecvLength;
+    char            iRecvBuffer[512];
+    TUint16         iRecvLength;
+
+    TMessageQueue   iMessageQueue[5];
 };
 
 #endif /* __GAMEBTCOMMS_H */

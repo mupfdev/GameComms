@@ -123,11 +123,11 @@ Registration Sequence</h2>
 </table>
 <h2><a class="anchor" id="autotoc_md3"></a>
 Message Handling</h2>
-<p>All messages sent from the N-Gage to the ESP32 start with a 2 byte header. The first byte contains the intended recipient (<code>01h</code> to <code>05h</code>) and the second byte contains the length of the subsequent data. The end of the message is terminated with a new line character (<code>0Ah</code>).</p>
-<p>Although the first byte would not be mandatory for received messages, it is still sent. This could later contain the purpose of a message, for example. In addition, the protocol remains consistent in both directions.</p>
-<p>Possible values for the first byte:</p>
+<p>All messages sent from the N-Gage to the ESP32 start with a 2 byte header. The first byte contains the intended recipient <code>01h</code> to <code>05h</code> and the second byte contains the length of the subsequent data. The end of the message is terminated with a new line character <code>0Ah</code>.</p>
+<p>Although the ESP32 hub should only forward messages intended for the target device, the first byte of a received message always contains its sender. This is important as the host must pass this information on to the callback function <code><a class="el" href="classMGameBTCommsNotify.html#abd6870737d90c9d25c344b787a5f7d1a" title="Notifies the game application that some application specific data has been received from a client gam...">MGameBTCommsNotify::ReceiveDataFromClient()</a></code>.</p>
+<p>Possible values for byte 1:</p>
 <ul>
-<li><code>00h</code> Intended not to be used</li>
+<li><code>00h</code> Intentionally unused</li>
 <li><code>01h</code> Host</li>
 <li><code>02h</code> Client 1</li>
 <li><code>03h</code> Client 2</li>

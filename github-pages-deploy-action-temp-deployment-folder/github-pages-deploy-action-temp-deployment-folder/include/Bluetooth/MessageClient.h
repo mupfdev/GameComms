@@ -66,7 +66,6 @@ public:
   */
     TBool IsSendingMessage();
 
-
 /*!
   @function IsReadyToSendMessage
   
@@ -143,7 +142,6 @@ private:
   @param aMessage the message to be sent to the remote machine
   */
     void ConstructL(const TDesC8& aMessage);
-
 
 private:
 

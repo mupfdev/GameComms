@@ -5,10 +5,10 @@
 GameComms is a connectivity library specialised for multidevice games
 programming on the Series 60 platform to connect up to four devices via
 Bluetooth.  GameComms was part of the proprietary Nokia N-Gage SDK and
-was used in 42 of a total of 55 games.
+was used in 44 of a total of 57 games.
 
 This project is an attempt to reverse engineer the GameComms library and
-create versions that can be used as drop-in replacements for the 10
+create versions that can be used as drop-in replacements for the 11
 different versions that were included in the official games.
 
 The primary idea is to send the data handled by GameComms serially to a
@@ -51,26 +51,24 @@ ROL:H
 
 ## Message Handling
 
-All incoming and outgoing messages consist of 3 bytes each.  The first
-byte represents either the recipient, the sender or a command specifier:
+All messages sent from the N-Gage to the ESP32 start with a 2 byte
+header.  The first byte contains the intended recipient `01h` to `05h`
+and the second byte contains the length of the subsequent data.  The end
+of the message is terminated with a new line character `0Ah`.
 
-| Byte 1 | Description       |
-| :----: | :---------------- |
-| `0x00` | Client 0 (Host)   |
-| `0x01` | Client 1          |
-| `0x02` | Client 2          |
-| `0x03` | Client 3          |
-| `0x42` | Broadcast         |
-| `0x43` | Connect           |
-| `0x44` | Disconnect        |
-| `0x50` | Pause Game        |
-| `0x52` | Resume Game       |
+Although the ESP32 hub should only forward messages intended for the
+target device, the first byte of a received message always contains its
+sender. This is important as the host must pass this information on to
+the callback function `MGameBTCommsNotify::ReceiveDataFromClient()`.
 
-The second byte holds the payload.  If the first byte is a command
-specifier, the payload contains either the ID of the sender or the
-receiver.
+Possible values for byte 1:
 
-The byte sequence is always terminated with a newline character `\n`.
+- `00h` Intentionally unused
+- `01h` Host
+- `02h` Client 1
+- `03h` Client 2
+- `04h` Client 3
+- `05h` Broadcast
 
 # Versions
 
@@ -111,19 +109,21 @@ by game title.
 |   06    | X-Men Legends II: Rise of Apocalypse     | bb02377c5361597f8d8503f5de584845 |    57    |
 |   06    | X-Men Legends                            | bb02377c5361597f8d8503f5de584845 |    57    |
 |   06    | Xanadu Next                              | bb02377c5361597f8d8503f5de584845 |    57    |
-|   07    | Ashen                                    | d4c10fcebfb6da8da6b757aa8392b6d7 |    57    |
-|   07    | Bomberman                                | d4c10fcebfb6da8da6b757aa8392b6d7 |    57    |
-|   07    | Colin McRae Rally 2005                   | d4c10fcebfb6da8da6b757aa8392b6d7 |    57    |
-|   07    | Crash Nitro Kart                         | d4c10fcebfb6da8da6b757aa8392b6d7 |    57    |
-|   07    | Operation Shadow                         | d4c10fcebfb6da8da6b757aa8392b6d7 |    57    |
-|   08    | Tiger Woods PGA Tour 2004                | 6ac8b1a1e490b367a1d5e46bb720fe70 |    57    |
-|   09    | Glimmerati                               | 827df54717bc210daa96aef9e12de4a3 |    63    |
-|   09    | ONE                                      | 827df54717bc210daa96aef9e12de4a3 |    63    |
-|   09    | Rifts: Promise of Power                  | 827df54717bc210daa96aef9e12de4a3 |    63    |
-|   09    | System Rush                              | 827df54717bc210daa96aef9e12de4a3 |    63    |
-|   09    | The Roots: Gates of Chaos                | 827df54717bc210daa96aef9e12de4a3 |    63    |
-|   10    | Asphalt: Urban GT 2                      | 75536306ef48b1928b4562890d01c9c6 |    63    |
-|   10    | Warhammer 40,000: Glory in Death         | 75536306ef48b1928b4562890d01c9c6 |    63    |
+|   07    | Snakes                                   | f07f48ee44cca60046f40ce41858a160 |    57    |
+|   08    | Ashen                                    | d4c10fcebfb6da8da6b757aa8392b6d7 |    57    |
+|   08    | Bomberman                                | d4c10fcebfb6da8da6b757aa8392b6d7 |    57    |
+|   08    | Colin McRae Rally 2005                   | d4c10fcebfb6da8da6b757aa8392b6d7 |    57    |
+|   08    | Crash Nitro Kart                         | d4c10fcebfb6da8da6b757aa8392b6d7 |    57    |
+|   08    | Operation Shadow                         | d4c10fcebfb6da8da6b757aa8392b6d7 |    57    |
+|   09    | Tiger Woods PGA Tour 2004                | 6ac8b1a1e490b367a1d5e46bb720fe70 |    57    |
+|   10    | Glimmerati                               | 827df54717bc210daa96aef9e12de4a3 |    63    |
+|   10    | ONE                                      | 827df54717bc210daa96aef9e12de4a3 |    63    |
+|   10    | Rifts: Promise of Power                  | 827df54717bc210daa96aef9e12de4a3 |    63    |
+|   10    | System Rush                              | 827df54717bc210daa96aef9e12de4a3 |    63    |
+|   10    | The Roots: Gates of Chaos                | 827df54717bc210daa96aef9e12de4a3 |    63    |
+|   11    | Asphalt: Urban GT 2                      | 75536306ef48b1928b4562890d01c9c6 |    63    |
+|   11    | Habbo Islands                            | 75536306ef48b1928b4562890d01c9c6 |    63    |
+|   11    | Warhammer 40,000: Glory in Death         | 75536306ef48b1928b4562890d01c9c6 |    63    |
 
 # License
 

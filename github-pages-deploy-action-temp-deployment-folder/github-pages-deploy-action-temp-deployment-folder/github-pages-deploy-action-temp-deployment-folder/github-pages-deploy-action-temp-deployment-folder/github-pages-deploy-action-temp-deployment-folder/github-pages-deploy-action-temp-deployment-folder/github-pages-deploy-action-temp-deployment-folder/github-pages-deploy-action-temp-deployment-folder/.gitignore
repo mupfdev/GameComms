@@ -1,0 +1,6 @@
+.vs
+build
+out
+CMakeSettings.json
+launch.vs.json
+tmp

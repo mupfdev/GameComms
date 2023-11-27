@@ -24,6 +24,7 @@ void setup()
 {
     Serial.begin(115200);
     SerialBT.begin("GameCommsHub");
+    Serial.printf("GameCommsHub\n\n");
 }
 
 void loop()
@@ -42,16 +43,29 @@ void loop()
         else
         {
             buffer[index] = '\0';
-            index         = 0;
 
-            if (buffer[2] == '\n')
-            {
-                Serial.printf("0x%2X 0x%2X\n", buffer[0], buffer[1]);
+            switch (buffer[0])
+            { 
+                // Message to ..
+                case 0x01: // Host
+                case 0x02: // Client 1
+                case 0x03: // Client 2
+                case 0x04: // Client 3
+                case 0x05: // all
+                {
+                    for (int i = 0; i < index; i += 1)
+                    {
+                        Serial.printf("%02X ", buffer[i]);
+                    }
+                    Serial.printf("\n");
+                    buffer[0] = 0x00;
+                    break;
+                }
+                default:
+                    Serial.printf("%s\n", buffer);
+                    break;
             }
-            else
-            {
-                Serial.printf("%s\n", buffer);
-            }
+            index = 0;
         }
     }
 }

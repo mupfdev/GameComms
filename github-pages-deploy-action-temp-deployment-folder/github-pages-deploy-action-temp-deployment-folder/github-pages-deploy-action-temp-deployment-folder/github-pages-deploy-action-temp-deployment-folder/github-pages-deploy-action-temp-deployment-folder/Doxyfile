@@ -172,7 +172,10 @@ FILE_PATTERNS          = *.c \
 RECURSIVE              = NO
 EXCLUDE                = src/Bluetooth/* \
                          include/Bluetooth/* \
-                         include/Misc/*
+                         src/Misc/* \
+                         include/Misc/* \
+                         client/* \
+                         server/*
 EXCLUDE_SYMLINKS       = NO
 EXCLUDE_PATTERNS       =
 EXCLUDE_SYMBOLS        =

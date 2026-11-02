@@ -12,8 +12,8 @@ Exit status 0 when all checks pass.
 """
 import argparse, os, re, sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-sys.path.insert(0, os.path.join(ROOT, 'dll', 'variants'))
-sys.path.insert(0, os.path.join(ROOT, 'tools', 're'))
+sys.path.append(os.path.join(ROOT, 'dll', 'variants'))
+sys.path.append(os.path.join(ROOT, 'tools', 're'))
 from variants import VARIANTS          # noqa: E402
 from e32 import E32                    # noqa: E402
 

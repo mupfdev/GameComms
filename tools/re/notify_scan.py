@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """List the MGameBTCommsNotify vtable offsets each variant calls.
 
-Usage: notify_scan.py DISASM_DIR   (files gamecomms.vN.dll.s from dis.py)
+Usage: notify_scan.py DISASM_DIR   (files gamecomms.vN.dll.s from e32dis.py)
 The notify pointer lives at +0x1c of the internal comms object; a call is
 'ldr r0,[rX,#0x1c]' followed by 'ldr r12,[r3|r12,#off]; mov lr,pc; bx r12'.
 """

@@ -17,7 +17,7 @@ Confidence markers:
 |---|---|
 | Parse the E32 images (header, exports, imports, relocations) | `tools/re/e32.py` |
 | Map imported ordinals to names using the SDK import libraries | `tools/re/implib.py` |
-| Disassemble with labels for exports, imports and strings | `tools/re/dis.py` (llvm-objdump) |
+| Disassemble with labels for exports, imports and strings | `tools/re/e32dis.py` (llvm-objdump) |
 | Decompile | Ghidra 10.4 headless, `tools/re/ghidra/Decomp.java` |
 | Compare exported functions between variants | `tools/re/xmatch.py` |
 | Find all calls to the game's callback object | `tools/re/notify_scan.py` |

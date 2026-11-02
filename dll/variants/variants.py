@@ -163,7 +163,7 @@ def print_table():
 
 
 def check(dlldir):
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'tools', 're'))
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'tools', 're'))
     from e32 import E32
     ok = True
     for v, (_, _, t) in VARIANTS.items():

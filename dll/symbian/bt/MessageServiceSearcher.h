@@ -45,6 +45,13 @@ public:
   */
     TInt Port();
 
+/*!
+  @function ResetPort
+
+  @discussion Forget the channel of an earlier search (GameComms addition)
+  */
+    void ResetPort() { iPort = -1; }
+
 protected:
 
 /*!

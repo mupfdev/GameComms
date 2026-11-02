@@ -69,6 +69,13 @@ void CBTServiceSearcher::FindServiceL(TRequestStatus& aObserverRequestStatus)
 
     iStatusObserver = &aObserverRequestStatus;
 
+    // GameComms fix: this request is completed from user code
+    // (User::RequestComplete in Finished()), not by the kernel, so it must be
+    // marked pending here.  Otherwise the caller's active object runs on the
+    // next unrelated signal with a stale KErrNone (before the search has
+    // finished), and the real completion later becomes a stray signal.
+    aObserverRequestStatus = KRequestPending;
+
     iAgent->NextRecordRequestL();
     }
 
@@ -190,7 +197,11 @@ void CBTServiceSearcher::Finished(TInt aError /* default = KErrNone */)
         {
         aError = KErrNotFound;
         }
-    User::RequestComplete(iStatusObserver, aError);
+    if (iStatusObserver)
+        {
+        User::RequestComplete(iStatusObserver, aError);
+        iStatusObserver = NULL;
+        }
     }
 
 TBool CBTServiceSearcher::HasFinishedSearching() const
@@ -216,6 +227,19 @@ TBool CBTServiceSearcher::HasFoundService() const
 void CBTServiceSearcher::SetDeviceAddress(const TBTDevAddr& aAddr)
     {
     iResponse().SetDeviceAddress(aAddr);
+    }
+
+void CBTServiceSearcher::CancelFindService()
+    {
+    // GameComms addition: stop a running service search and complete the
+    // caller's request, so that its Cancel() does not wait forever
+    delete iAgent;
+    iAgent = NULL;
+    if (iStatusObserver)
+        {
+        User::RequestComplete(iStatusObserver, KErrCancel);
+        iStatusObserver = NULL;
+        }
     }
 
 void CBTServiceSearcher::CancelSelection()

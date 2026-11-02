@@ -314,7 +314,7 @@ static void printStatus()
     Serial.printf("  server    : %s:%u state %d link %d\n", cfg.host.c_str(), cfg.port, br.srv_state, br.srv.state);
     Serial.printf("  messages  : dev->srv %lu srv->dev %lu, retx dev %lu srv %lu\n", (unsigned long)br.st_dev_msgs,
                   (unsigned long)br.st_srv_msgs, (unsigned long)br.dev.st_retx, (unsigned long)br.srv.st_retx);
-    Serial.printf("  free heap : %u\n", (unsigned)ESP.getFreeHeap());
+    Serial.printf("  free heap : %u (lowest %u)\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
 }
 
 static void handleCommand(String line)
@@ -515,6 +515,11 @@ void loop()
         btOpened = false;
         btConnected = true;
         bridge_dev_connected(&br, btPeer, now);
+        if (cfg.verbose)
+        {
+            Serial.printf("[%8lu] free heap %u (lowest %u)\n", (unsigned long)now, (unsigned)ESP.getFreeHeap(),
+                          (unsigned)ESP.getMinFreeHeap());
+        }
     }
     if (btConnected)
     {
@@ -561,6 +566,17 @@ void loop()
     }
 
     bridge_poll(&br, millis());
+
+    /* warn once when memory gets tight (crashes follow when it runs out) */
+    {
+        static bool warned = false;
+        uint32_t    lowest = ESP.getMinFreeHeap();
+        if (!warned && lowest < 12000)
+        {
+            warned = true;
+            Serial.printf("[%8lu] warning: free heap went down to %u bytes\n", (unsigned long)now, (unsigned)lowest);
+        }
+    }
 
     /* LED: off = no Wi-Fi, slow blink = server, solid = device + server,
        fast blink = setup mode */

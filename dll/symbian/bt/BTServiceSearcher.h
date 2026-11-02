@@ -50,6 +50,10 @@ public:
     /* GameComms: cancel an outstanding device selection */
     void CancelSelection();
 
+    /* GameComms: cancel an outstanding service search (completes the
+       caller's request with KErrCancel) */
+    void CancelFindService();
+
 /*!
   @function BTDevAddr
   

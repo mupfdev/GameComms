@@ -136,6 +136,7 @@ void CGcTransport::ConnectL()
         }
         iObserver.TransportProgress(_L8("searching serial port service"), 0);
         iState = ESearching;
+        iSearcher->ResetPort();
         iSearcher->FindServiceL(iStatus);
         SetActive();
         return;
@@ -186,14 +187,24 @@ void CGcTransport::RunL()
             }
             iObserver.TransportProgress(_L8("searching serial port service"), 0);
             iState = ESearching;
+            iSearcher->ResetPort();
             iSearcher->FindServiceL(iStatus);
             SetActive();
             return;
 
         case ESearching:
+            iObserver.TransportProgress(_L8("service search result"), err);
             if (err != KErrNone)
             {
                 Fail(err);
+                return;
+            }
+            /* RFCOMM channels are 1..30; anything else means the search did
+               not really find the service (seen once right after pairing) */
+            if (iSearcher->Port() < 1 || iSearcher->Port() > 30)
+            {
+                iObserver.TransportProgress(_L8("service search gave no valid channel"), iSearcher->Port());
+                Fail(KErrNotFound);
                 return;
             }
             ConnectSocketL(iSearcher->Port());
@@ -242,6 +253,9 @@ void CGcTransport::DoCancel()
     {
         case ESelecting:
             iSearcher->CancelSelection();
+            break;
+        case ESearching:
+            iSearcher->CancelFindService();
             break;
         case EConnecting:
             iSocket.CancelConnect();

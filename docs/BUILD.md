@@ -75,6 +75,7 @@ The on-board LED shows the state:
 - off: no Wi-Fi or no server
 - blinking: connected to the server
 - on: connected to the server and to the N-Gage
+- fast blinking: setup mode
 
 Flash and open the console (115200 baud):
 
@@ -90,8 +91,20 @@ select "ESP32 Dev Module" and the partition scheme "Huge APP".
 
 ### Configuration
 
-Without Wi-Fi settings the bridge opens the access point
-`GameCommsBridge-Setup`. Connect to it and open `http://192.168.4.1/`.
+Without Wi-Fi settings the bridge starts in setup mode: it opens the
+access point `GameCommsBridge-Setup`. Connect to it and open
+`http://192.168.4.1/`.
+
+To change the settings later, start setup mode in one of these ways:
+
+- Hold the BOOT button for 3 seconds while the bridge is running. The bridge
+  restarts in setup mode and the LED blinks fast.
+- Enter `setup` on the serial console.
+
+The current settings stay. Leave the password field empty to keep the
+saved password. "Reboot without changes" leaves setup mode. Setup mode
+is only used for the next start; after a power cycle the bridge starts
+normally again.
 
 Or use the serial console:
 
@@ -110,7 +123,8 @@ reboot
 - `host auto` finds the server on the local network. Otherwise enter a
   host name or IP address.
 - `key` is only needed if the server requires an access key.
-- `status` shows the current state, `factory` erases all settings.
+- `status` shows the current state, `setup` restarts in setup mode,
+  `factory` erases all settings.
 
 ## Server
 

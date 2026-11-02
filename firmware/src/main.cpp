@@ -33,7 +33,25 @@ extern "C" {
 #define LED_PIN 2
 #endif
 
+#ifndef SETUP_BUTTON_PIN
+#define SETUP_BUTTON_PIN 0 /* BOOT button on most ESP32 boards, low when pressed */
+#endif
+#define SETUP_HOLD_MS 3000
+
 #define DISCOVERY_PORT 9888
+
+/* Survives a software restart, not a power cycle: requests setup mode once. */
+#define SETUP_MAGIC 0x53455455u
+RTC_NOINIT_ATTR static uint32_t setupRequest;
+static bool setupMode = false;
+
+static void restartIntoSetup()
+{
+    setupRequest = SETUP_MAGIC;
+    Serial.println("restarting into setup mode");
+    delay(100);
+    ESP.restart();
+}
 
 /* ------------------------------------------------------------------ */
 /* configuration                                                       */
@@ -255,6 +273,8 @@ static void webRoot()
     p += "Bluetooth name<br><input name=btname value=\"" + htmlEscape(cfg.btname) + "\"><br>";
     p += "Bluetooth PIN<br><input name=pin value=\"" + htmlEscape(cfg.pin) + "\"><br><br>";
     p += "<button>Save and reboot</button></form>";
+    p += "<p>Leave the password empty to keep the saved one.</p>";
+    p += "<form method=post action=/reboot><button>Reboot without changes</button></form>";
     web->send(200, "text/html", p);
 }
 
@@ -269,6 +289,13 @@ static void webSave()
     if (web->hasArg("pin") && web->arg("pin").length()) cfg.pin = web->arg("pin");
     saveConfig();
     web->send(200, "text/html", "Saved. Rebooting...");
+    delay(500);
+    ESP.restart();
+}
+
+static void webReboot()
+{
+    web->send(200, "text/html", "Rebooting...");
     delay(500);
     ESP.restart();
 }
@@ -302,7 +329,7 @@ static void handleCommand(String line)
     String rest = sp < 0 ? "" : line.substring(sp + 1);
     if (cmd == "help")
     {
-        Serial.println("commands: status | show | set <ssid|pass|host|port|key|btname|pin|verbose> <value> | save | reboot | factory");
+        Serial.println("commands: status | show | set <ssid|pass|host|port|key|btname|pin|verbose> <value> | save | reboot | setup | factory");
     }
     else if (cmd == "status")
     {
@@ -339,6 +366,10 @@ static void handleCommand(String line)
     {
         ESP.restart();
     }
+    else if (cmd == "setup")
+    {
+        restartIntoSetup();
+    }
     else if (cmd == "factory")
     {
         prefs.begin("gcbridge", false);
@@ -360,6 +391,9 @@ void setup()
 {
     Serial.begin(115200);
     pinMode(LED_PIN, OUTPUT);
+    pinMode(SETUP_BUTTON_PIN, INPUT_PULLUP);
+    setupMode = setupRequest == SETUP_MAGIC;
+    setupRequest = 0;
     loadConfig();
     Serial.printf("\nGameComms bridge %s\n", BRIDGE_VERSION);
 
@@ -389,15 +423,17 @@ void setup()
     }
     Serial.printf("Bluetooth SPP '%s' ready\n", cfg.btname.c_str());
 
-    if (cfg.ssid.length() == 0)
+    if (cfg.ssid.length() == 0 || setupMode)
     {
+        setupMode = true;
         WiFi.mode(WIFI_AP);
         WiFi.softAP("GameCommsBridge-Setup");
         web = new WebServer(80);
         web->on("/", HTTP_GET, webRoot);
         web->on("/save", HTTP_POST, webSave);
+        web->on("/reboot", HTTP_POST, webReboot);
         web->begin();
-        Serial.println("No Wi-Fi configured: join 'GameCommsBridge-Setup' and open http://192.168.4.1/");
+        Serial.println("Setup mode: join 'GameCommsBridge-Setup' and open http://192.168.4.1/");
         Serial.println("or use the console: set ssid <name> / set pass <pw> / save / reboot");
     }
     else
@@ -432,6 +468,26 @@ void loop()
     if (web)
     {
         web->handleClient();
+    }
+
+    /* hold the BOOT button for 3 seconds: restart into setup mode */
+    {
+        static uint32_t pressedSince = 0;
+        if (digitalRead(SETUP_BUTTON_PIN) == LOW)
+        {
+            if (pressedSince == 0)
+            {
+                pressedSince = now | 1;
+            }
+            else if (!setupMode && now - pressedSince >= SETUP_HOLD_MS)
+            {
+                restartIntoSetup();
+            }
+        }
+        else
+        {
+            pressedSince = 0;
+        }
     }
 
     /* Bluetooth transport events */
@@ -496,12 +552,17 @@ void loop()
 
     bridge_poll(&br, millis());
 
-    /* LED: off = no Wi-Fi, slow blink = server, solid = device + server */
-    if (now - lastLed > 250)
+    /* LED: off = no Wi-Fi, slow blink = server, solid = device + server,
+       fast blink = setup mode */
+    if (now - lastLed > (setupMode ? 80u : 250u))
     {
         static bool on = false;
         lastLed = now;
-        if (br.srv_state == GC_BS_UP && btConnected)
+        if (setupMode)
+        {
+            on = !on;
+        }
+        else if (br.srv_state == GC_BS_UP && btConnected)
         {
             on = true;
         }

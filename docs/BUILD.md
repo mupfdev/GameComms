@@ -6,6 +6,7 @@
 |---|---|---|
 | Replacement DLLs | ngage-toolchain (Windows), CMake, Ninja, Python 3 | `build/dll/out/vN/gamecomms.dll` |
 | ESP32 firmware | PlatformIO | flashed bridge |
+| PC bridge | Visual Studio or MinGW, CMake | `gcbridge.exe` |
 | Server | C99 compiler, CMake | `gamecommsd` |
 | Tests | C compiler, CMake, Python 3 | test report |
 
@@ -126,6 +127,65 @@ reboot
 - `status` shows the current state, `setup` restarts in setup mode,
   `factory` erases all settings.
 
+## PC bridge (Windows)
+
+The PC bridge `gcbridge.exe` does the same as the ESP32 bridge, using the
+PC's Bluetooth adapter instead. One PC can serve several N-Gages at the
+same time (default 4, at most 7).
+
+Requirements: Windows 10 or 11 with a Bluetooth adapter (built in or a
+USB dongle) that is switched on.
+
+### Getting it
+
+Download `gcbridge-windows` from the latest CI run on GitHub (Actions tab),
+or build it:
+
+```bat
+cmake -S pcbridge -B build\pcbridge
+cmake --build build\pcbridge --config Release
+```
+
+The result is `build\pcbridge\Release\gcbridge.exe`. It has no
+dependencies and can be copied to any Windows PC together with
+`pcbridge\gcbridge.ini`.
+
+### Using it
+
+1. Start the server (on this PC or another one), see below.
+2. Start `gcbridge.exe`. It shows the Bluetooth channel it uses and
+   whether it found the server.
+3. On the N-Gage, start a multiplayer game. When the Bluetooth device
+   list appears, select this PC.
+4. If the N-Gage asks for a PIN, enter `1234`. The bridge answers the
+   pairing request automatically, no Windows dialog is needed.
+
+Several N-Gages can connect to the same PC. Each one gets its own
+connection to the server.
+
+If the N-Gage does not find the PC, open the Bluetooth settings in Windows
+while searching (Windows 11: set "Bluetooth devices discovery" to
+"Advanced"), or pair the N-Gage once from Windows with "Add device".
+
+### Settings
+
+`gcbridge.ini` is read from the current folder or from the folder of
+`gcbridge.exe`. Every setting can also be given on the command line, for
+example `gcbridge --server=my.server.name --key=secret`.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `server` | `auto` | server host name or IP address, `auto` finds it on the local network |
+| `port` | `9888` | server port |
+| `key` | empty | access key, if the server requires one |
+| `pin` | `1234` | PIN for pairing; empty = confirm pairing in Windows |
+| `name` | `GameComms Bridge` | name of the Bluetooth service |
+| `max_devices` | `4` | N-Gages at the same time (1 to 7) |
+| `log_level` | `2` | 0 errors, 1 warnings, 2 information, 3 debug |
+| `channel` | `0` | RFCOMM channel, 0 = any free channel |
+
+The N-Gage sees the PC under its Windows Bluetooth name.
+
 ## Server
 
 ### Linux and macOS
@@ -195,10 +255,11 @@ ctest --test-dir build/tests --output-on-failure
 | `server_core` | Registration, matchmaking, slots, isolation by game, routing, timeouts, rejoin, kick |
 | `e2e_simulated` | DLL logic, bridge and server together with simulated Bluetooth and TCP: all 1.x and 2.x game flows, interruptions, reconnects, bridge reboot |
 | `e2e_network` | Real server and `gcsim` over TCP, 2 to 4 players, wrong access key |
+| `pcbridge_network` | Real server, PC bridge and `gcsim` over TCP (instead of Bluetooth): 1.x and 2.x, explicit server and LAN discovery, an N-Gage dropping out and coming back |
 | `dll_variants` | Export tables of all variants compared with the original DLLs |
 
-CI runs these tests on Linux and Windows and also builds the Docker image
-and the ESP32 firmware.
+CI runs these tests on Linux and Windows and also builds the Docker image,
+the ESP32 firmware and `gcbridge.exe`.
 
 ## Hardware test plan
 

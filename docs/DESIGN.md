@@ -4,8 +4,8 @@
 
 Unmodified N-Gage games call GAMECOMMS.DLL as before. Instead of
 connecting to other N-Gages over Bluetooth, the replacement DLL connects
-to one ESP32 bridge over Bluetooth serial (SPP). The bridge forwards the
-traffic over Wi-Fi and TCP to a server. The server matches players of the
+to a bridge over Bluetooth serial (SPP): an ESP32 board or a Windows PC.
+The bridge forwards the traffic over TCP to a server. The server matches players of the
 same game and forwards their data. Up to four devices (one host, three
 clients) can play together.
 
@@ -27,13 +27,14 @@ clients) can play together.
 | DLL adapter | C++ | `dll/symbian/` | Exports, Symbian objects, Bluetooth, timers, list UI |
 | Bridge engine | C89 | `firmware/src/bridge_core.c` | Forwarding between Bluetooth and TCP |
 | Bridge firmware | C++ (Arduino) | `firmware/src/main.cpp` | Hardware, Wi-Fi, settings, console, setup page |
+| PC bridge | C | `pcbridge/src/` | Windows Bluetooth (RFCOMM, service record, PIN), one bridge engine per N-Gage, LAN discovery |
 | Server engine | C99 | `server/src/gcs_core.c` | Registration, sessions, routing |
 | Server program | C99 | `server/src/gcs_main.c` | Sockets, configuration, LAN discovery |
 
 The engines are plain state machines: no threads, no blocking calls and
 no own clock (the current time is passed in). The same code therefore
-runs in a Symbian active object, in the Arduino loop, in the server's
-poll loop and in the test simulator.
+runs in a Symbian active object, in the Arduino loop, in the PC bridge's
+and the server's select/poll loops and in the test simulator.
 
 ## Responsibilities
 
@@ -128,6 +129,7 @@ ConnectedClientEndedGame.
 |---|---|---|
 | N-Gage | player name, bridge address, auto join, log | `E:\GameComms.ini` (optional) |
 | ESP32 | Wi-Fi, server, access key, Bluetooth name and PIN | serial console or setup web page |
+| PC bridge | server, access key, PIN, number of N-Gages | `gcbridge.ini` or command line |
 | Server | port, limits, timeouts, access key, logging | `gamecommsd.conf` or command line |
 
 ## Security

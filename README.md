@@ -7,14 +7,15 @@ N-Gage multiplayer games use it to connect up to four devices over
 Bluetooth. This project replaces it so that these games can play over
 Wi-Fi and the Internet, without changes to the games.
 
-The N-Gage talks Bluetooth to an ESP32 bridge. The bridge connects over
-Wi-Fi to a server, which matches players of the same game and forwards
-their data.
+The N-Gage talks Bluetooth to a bridge: either an ESP32 board or a
+Windows PC with Bluetooth. The bridge connects to a server, which matches
+players of the same game and forwards their data.
 
 ## Contents
 
 - `dll/` - replacement GAMECOMMS.DLL for all 11 original variants
 - `firmware/` - ESP32 bridge firmware
+- `pcbridge/` - PC bridge for Windows (`gcbridge.exe`), same job as the ESP32
 - `server/` - endpoint server (`gamecommsd`)
 - `protocol/` - protocol library shared by all three parts
 - `tests/` - automated tests
@@ -33,8 +34,12 @@ their data.
 
 1. Server: build and run `gamecommsd` on a PC in your network
    (see docs/BUILD.md).
-2. Bridge: flash an ESP32 with `pio run -d firmware -t upload`, connect
-   to its `GameCommsBridge-Setup` Wi-Fi and enter your Wi-Fi settings.
+2. Bridge, one of:
+   - Windows PC with Bluetooth: start `gcbridge.exe`. One PC can serve
+     several N-Gages.
+   - ESP32: flash it with `pio run -d firmware -t upload`, connect to its
+     `GameCommsBridge-Setup` Wi-Fi and enter your Wi-Fi settings. One
+     ESP32 per N-Gage.
 3. N-Gage: replace the game's `gamecomms.dll` with the matching build
    (see the list below), start a multiplayer game and select the bridge
    when asked.
@@ -101,6 +106,9 @@ cannot be mixed. Other combinations are not tested.
 - Protocol, server, bridge and DLL logic: implemented and covered by
   automated tests.
 - ESP32 firmware: implemented, built in CI.
+- PC bridge: implemented, tested with simulated devices over TCP and built
+  for Windows in CI. The Bluetooth part still has to be tested with a real
+  N-Gage.
 - Symbian DLLs: implemented. They need the Windows N-Gage toolchain to
   build and still have to be tested on real hardware.
 

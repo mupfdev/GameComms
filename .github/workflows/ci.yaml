@@ -44,3 +44,22 @@ jobs:
         with:
           name: firmware
           path: firmware/.pio/build/esp32dev/firmware.bin
+
+  pcbridge-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S pcbridge -B build/pcbridge
+      - name: Build
+        run: cmake --build build/pcbridge --config Release
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item build/pcbridge/Release/gcbridge.exe dist/
+          Copy-Item pcbridge/gcbridge.ini dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gcbridge-windows
+          path: dist/

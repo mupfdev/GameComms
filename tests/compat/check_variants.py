@@ -2,7 +2,10 @@
 """Compatibility checks for every GAMECOMMS.DLL variant.
 
 1. The export table of each variant (dll/variants/variants.py) matches the
-   original binary: same number of ordinals, contiguous, nothing missing.
+   original: same number of ordinals, contiguous, nothing missing.  The
+   original DLLs in reference/ are not part of the repository (they are
+   Nokia's files).  When they are present they are checked too; otherwise
+   the values recorded from them below are used.
 2. Every thunk referenced by a table exists in dll/symbian/GcExports.cpp
    with the argument count the original function uses.
 3. Optional: built replacement DLLs (--built DIR containing vN/gamecomms.dll)
@@ -10,12 +13,16 @@
 
 Exit status 0 when all checks pass.
 """
-import argparse, os, re, sys
+import argparse, hashlib, os, re, sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 sys.path.append(os.path.join(ROOT, 'dll', 'variants'))
 sys.path.append(os.path.join(ROOT, 'tools', 're'))
 from variants import VARIANTS          # noqa: E402
 from e32 import E32                    # noqa: E402
+
+# Recorded from the original DLLs (reference/gamecomms.vN.dll).
+ORIG_UIDS = (0x10000079, 0x1000008d, 0x101f5ee2)
+ORIG_EXPORTS = {1: 33, 2: 55, 3: 56, 4: 56, 5: 57, 6: 57, 7: 57, 8: 57, 9: 57, 10: 63, 11: 63}
 
 # number of register/stack arguments (including "this") observed in the
 # original export code for each implemented function kind
@@ -42,11 +49,22 @@ def main():
     ok = True
     th = thunks()
     for v, (md5, api, table) in VARIANTS.items():
-        orig = E32(os.path.join(ROOT, 'reference', f'gamecomms.v{v}.dll'))
         errs = []
-        if orig.export_count != len(table):
-            errs.append(f'export count {len(table)} != original {orig.export_count}')
-        if sorted(table) != list(range(1, orig.export_count + 1)):
+        uids, count = ORIG_UIDS, ORIG_EXPORTS[v]
+        ref = os.path.join(ROOT, 'reference', f'gamecomms.v{v}.dll')
+        if os.path.exists(ref):
+            data = open(ref, 'rb').read()
+            if hashlib.md5(data).hexdigest() != md5:
+                errs.append(f'{ref} has an unexpected md5')
+            orig = E32(ref)
+            if (orig.uid1, orig.uid2, orig.uid3) != uids or orig.export_count != count:
+                errs.append('recorded UIDs or export count differ from the original')
+            src = 'original'
+        else:
+            src = 'recorded'
+        if count != len(table):
+            errs.append(f'export count {len(table)} != original {count}')
+        if sorted(table) != list(range(1, count + 1)):
             errs.append('ordinals not contiguous')
         for o, (sym, proto, conf) in table.items():
             if sym not in th:
@@ -59,14 +77,14 @@ def main():
                 errs.append(f'{p} missing')
             else:
                 b = E32(p)
-                if (b.uid1, b.uid2, b.uid3) != (orig.uid1, orig.uid2, orig.uid3):
+                if (b.uid1, b.uid2, b.uid3) != uids:
                     errs.append(f'UIDs {b.uid1:#x}/{b.uid2:#x}/{b.uid3:#x} differ from original')
-                if b.export_count != orig.export_count:
-                    errs.append(f'built DLL exports {b.export_count}, original {orig.export_count}')
+                if b.export_count != count:
+                    errs.append(f'built DLL exports {b.export_count}, original {count}')
                 if any(x == 0 for x in b.exports):
                     errs.append('built DLL has empty export slots')
         ok &= not errs
-        print(f'v{v:<2} api {api} {orig.export_count:2d} ordinals: ' + ('OK' if not errs else '; '.join(errs)))
+        print(f'v{v:<2} api {api} {count:2d} ordinals ({src}): ' + ('OK' if not errs else '; '.join(errs)))
     return 0 if ok else 1
 
 if __name__ == '__main__':

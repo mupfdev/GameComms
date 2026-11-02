@@ -1,0 +1,12 @@
+{
+  "name": "gamecomms-protocol",
+  "version": "1.0.0",
+  "description": "GameComms link/message protocol (COBS/CRC framing, reliable link, messages)",
+  "license": "MIT",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "include"
+  }
+}

@@ -1,0 +1,17 @@
+[Unit]
+Description=GameComms endpoint server (N-Gage multiplayer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/gamecommsd -c /etc/gamecommsd.conf
+Restart=on-failure
+RestartSec=2
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

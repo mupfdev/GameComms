@@ -1,0 +1,23 @@
+﻿{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "N-Gage",
+      "displayName": "Nokia N-Gage",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/build/${presetName}",
+      "installDir": "${sourceDir}/out/install/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{NGAGESDK}/cmake/ngage-toolchain.cmake",
+        "CMAKE_PREFIX_PATH": "$env{NGAGESDK}/sdk/extras/lib/cmake"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "N-Gage",
+      "configurePreset": "N-Gage"
+    }
+  ]
+}

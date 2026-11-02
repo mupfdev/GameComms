@@ -128,6 +128,7 @@ CGameBTComms1::~CGameBTComms1()
 
 void CGameBTComms1::StartHostL(TUint16 aStartPlayers, TUint16 aMinPlayers)
 {
+    iEngine->LogNum(_L8("StartHostL, start players"), aStartPlayers);
     gcd_v1_start_host(&iEngine->Dev(), aStartPlayers, aMinPlayers, iEngine->Now());
     iEngine->EnsureTransport();
     iEngine->Kick();
@@ -135,6 +136,7 @@ void CGameBTComms1::StartHostL(TUint16 aStartPlayers, TUint16 aMinPlayers)
 
 void CGameBTComms1::StartClientL()
 {
+    iEngine->LogNum(_L8("StartClientL"), 0);
     gcd_v1_start_client(&iEngine->Dev(), iEngine->Now());
     iEngine->EnsureTransport();
     iEngine->Kick();
@@ -355,6 +357,7 @@ void CGameBTComms2::StartHostL(TInt aShowList, CEikAppUi* aAppUi)
         User::Panic(KGcMainPanic, 2); /* as the original */
     }
     EnsureEngineL();
+    iEngine->LogNum(_L8("StartHostL, show list"), aShowList);
     iEngine->SetAppUi(aAppUi);
     gcd_v2_start(&iEngine->Dev(), 1, aShowList && aAppUi, iEngine->Now());
     iEngine->EnsureTransport();
@@ -368,6 +371,7 @@ void CGameBTComms2::StartClientL(TInt aShowList, CEikAppUi* aAppUi)
         User::Panic(KGcMainPanic, 2);
     }
     EnsureEngineL();
+    iEngine->LogNum(_L8("StartClientL, show list"), aShowList);
     iEngine->SetAppUi(aAppUi);
     gcd_v2_start(&iEngine->Dev(), 0, aShowList && aAppUi, iEngine->Now());
     iEngine->EnsureTransport();

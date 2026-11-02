@@ -55,12 +55,14 @@ public:
 
     const TGcConfig& Config() const { return iConfig; }
     void Log(const TDesC8& aText);
+    void LogNum(const TDesC8& aText, TInt aValue);
 
     /* MGcTransportObserver */
     void TransportUp();
     void TransportData(const TDesC8& aData);
     void TransportDown(TInt aError);
     void TransportSelecting(TBool aShowing);
+    void TransportProgress(const TDesC8& aStep, TInt aValue);
 
     /* MGcListObserver */
     void ListItemSelected(TInt aIndex);

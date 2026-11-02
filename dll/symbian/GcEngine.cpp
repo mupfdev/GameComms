@@ -56,7 +56,18 @@ void CGcEngine::ConstructL(TUint8 aApi, TUint8 aVariant, TUint32 aGameUid)
     iConfig.Load();
     if (iConfig.iLog && iFs.Connect() == KErrNone)
     {
-        iLogOpen = iLogFile.Replace(iFs, KGcLogFile, EFileWrite | EFileShareAny) == KErrNone;
+        /* append, so that several GameComms objects of one game share the log */
+        TInt err = iLogFile.Open(iFs, KGcLogFile, EFileWrite | EFileShareAny);
+        if (err == KErrNotFound)
+        {
+            err = iLogFile.Create(iFs, KGcLogFile, EFileWrite | EFileShareAny);
+        }
+        if (err == KErrNone)
+        {
+            TInt pos = 0;
+            iLogFile.Seek(ESeekEnd, pos);
+            iLogOpen = ETrue;
+        }
     }
 
     gcd_config cfg;
@@ -107,6 +118,17 @@ void CGcEngine::ConstructL(TUint8 aApi, TUint8 aVariant, TUint32 aGameUid)
     iTickPeriodUs = period.Int();
     iLastTick = User::TickCount();
     iTimer->Start(KGcTimerUs, KGcTimerUs, TCallBack(TimerCallBack, this));
+
+    TBuf8<96> line;
+    line.Copy(_L8("GameComms replacement, api "));
+    line.AppendNum(aApi);
+    line.Append(_L8(" variant "));
+    line.AppendNum(aVariant);
+    line.Append(_L8(" game uid "));
+    line.AppendNum(aGameUid, EHex);
+    line.Append(_L8(" bridge saved "));
+    line.AppendNum(iConfig.iHasBridge ? 1 : 0);
+    Log(line);
 }
 
 CGcEngine::~CGcEngine()
@@ -153,9 +175,19 @@ void CGcEngine::Log(const TDesC8& aText)
     iLogFile.Write(_L8("\r\n"));
 }
 
+void CGcEngine::LogNum(const TDesC8& aText, TInt aValue)
+{
+    TBuf8<96> t;
+    t.Copy(aText.Left(80));
+    t.Append(' ');
+    t.AppendNum(aValue);
+    Log(t);
+}
+
 void CGcEngine::EnsureTransport()
 {
     iWantTransport = ETrue;
+    LogNum(_L8("bridge connection wanted, busy"), iTransport->IsBusy() ? 1 : 0);
     if (!iTransport->IsBusy())
     {
         TRAPD(err, iTransport->ConnectL());
@@ -274,6 +306,12 @@ void CGcEngine::TransportDown(TInt aError)
 void CGcEngine::TransportSelecting(TBool aShowing)
 {
     iSelectingBridge = aShowing;
+    LogNum(_L8("device selection shown"), aShowing ? 1 : 0);
+}
+
+void CGcEngine::TransportProgress(const TDesC8& aStep, TInt aValue)
+{
+    LogNum(aStep, aValue);
 }
 
 /* ---- event dispatch ---- */

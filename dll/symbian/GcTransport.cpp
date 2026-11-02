@@ -127,17 +127,20 @@ void CGcTransport::ConnectL()
     }
     if (iConfig.iHasBridge)
     {
+        iObserver.TransportProgress(_L8("using saved bridge address, channel"), iConfig.iChannel);
         iSearcher->SetDeviceAddress(iConfig.iBridge);
         if (iConfig.iChannel > 0)
         {
             ConnectSocketL(iConfig.iChannel);
             return;
         }
+        iObserver.TransportProgress(_L8("searching serial port service"), 0);
         iState = ESearching;
         iSearcher->FindServiceL(iStatus);
         SetActive();
         return;
     }
+    iObserver.TransportProgress(_L8("no saved bridge, showing device selection"), 0);
     iState = ESelecting;
     iObserver.TransportSelecting(ETrue);
     iSearcher->SelectDeviceByDiscoveryL(iStatus);
@@ -156,6 +159,7 @@ void CGcTransport::ConnectSocketL(TInt aChannel)
     TBTSockAddr addr;
     addr.SetBTAddr(iSearcher->BTDevAddr());
     addr.SetPort(aChannel);
+    iObserver.TransportProgress(_L8("connecting RFCOMM channel"), aChannel);
     iState = EConnecting;
     iSocket.Connect(addr, iStatus);
     SetActive();
@@ -173,12 +177,14 @@ void CGcTransport::RunL()
                 Fail(err);
                 return;
             }
+            iObserver.TransportProgress(_L8("device selected, address saved"), 0);
             iConfig.SaveBridgeAddress(iSearcher->BTDevAddr());
             if (iConfig.iChannel > 0)
             {
                 ConnectSocketL(iConfig.iChannel);
                 return;
             }
+            iObserver.TransportProgress(_L8("searching serial port service"), 0);
             iState = ESearching;
             iSearcher->FindServiceL(iStatus);
             SetActive();
@@ -251,6 +257,7 @@ void CGcTransport::DoCancel()
 void CGcTransport::Fail(TInt aError)
 {
     TBool wasUp = iState == EConnected;
+    iObserver.TransportProgress(_L8("transport step failed, state"), iState);
     iWriter->Reset();
     if (iSocketOpen)
     {

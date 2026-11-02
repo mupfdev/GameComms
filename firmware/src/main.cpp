@@ -409,17 +409,25 @@ void setup()
     io.log = io_log;
     bridge_init(&br, &bc, &io, nullptr);
 
-    /* The N-Gage only supports Bluetooth 1.1 legacy PIN pairing */
+    /* The N-Gage only supports Bluetooth 1.1 legacy PIN pairing.
+       disableSSP() must come before begin(), setPin() after it (it talks to
+       the running Bluetooth stack). */
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
     SerialBT.disableSSP();
-    SerialBT.setPin(cfg.pin.c_str(), cfg.pin.length());
-#else
-    SerialBT.setPin(cfg.pin.c_str());
 #endif
     SerialBT.register_callback(sppCallback);
     if (!SerialBT.begin(cfg.btname))
     {
         Serial.println("Bluetooth init failed");
+    }
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    bool pinOk = SerialBT.setPin(cfg.pin.c_str(), cfg.pin.length());
+#else
+    bool pinOk = SerialBT.setPin(cfg.pin.c_str());
+#endif
+    if (!pinOk)
+    {
+        Serial.println("Bluetooth PIN could not be set");
     }
     Serial.printf("Bluetooth SPP '%s' ready\n", cfg.btname.c_str());
 
@@ -439,7 +447,9 @@ void setup()
     else
     {
         WiFi.mode(WIFI_STA);
-        WiFi.setSleep(false); /* lower latency; required for BT coexistence stability */
+        /* Modem sleep must stay on: with Bluetooth running, the Wi-Fi driver
+           aborts if it is disabled (WiFi.setSleep(false)). */
+        WiFi.setSleep(true);
         WiFi.setAutoReconnect(true);
         WiFi.begin(cfg.ssid.c_str(), cfg.pass.c_str());
     }

@@ -32,6 +32,8 @@ public:
     virtual void TransportDown(TInt aError) = 0;
     /** the device selection dialog is shown (ETrue) / closed (EFalse) */
     virtual void TransportSelecting(TBool aShowing) = 0;
+    /** progress information for the log */
+    virtual void TransportProgress(const TDesC8& aStep, TInt aValue) = 0;
 };
 
 class CGcWriter;

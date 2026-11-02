@@ -1,156 +1,140 @@
-# Technical design
+# Design
 
-## 1 Goal and constraints
+## Goal
 
-Unmodified N-Gage games call `GAMECOMMS.DLL` exactly as before.  Instead of
-building a Bluetooth piconet with other N-Gages, the replacement DLL talks
-to one ESP32 bridge over Bluetooth serial; the bridge carries the traffic
-over Wi-Fi/TCP to an endpoint server that matches players of the same game
-and routes their messages.  Up to four devices (one host, three clients)
-play together from anywhere.
+Unmodified N-Gage games call GAMECOMMS.DLL as before. Instead of
+connecting to other N-Gages over Bluetooth, the replacement DLL connects
+to one ESP32 bridge over Bluetooth serial (SPP). The bridge forwards the
+traffic over Wi-Fi and TCP to a server. The server matches players of the
+same game and forwards their data. Up to four devices (one host, three
+clients) can play together.
 
-Constraints that shaped the design:
+## Constraints
 
-* **Binary compatibility** with 11 variants of two different APIs (see
-  `REVERSE_ENGINEERING.md`), GCC 2.9 ABI, Symbian 6.1 without writable
-  static data in DLLs, games with small stacks.
-* The N-Gage only speaks Bluetooth 1.1 (legacy PIN pairing, RFCOMM/SPP).
-* The ESP32 has ~150 KB free RAM once Bluetooth Classic and Wi-Fi run.
-* Everything must be testable without hardware.
+- Binary compatibility with 11 variants of two different APIs (see
+  REVERSE_ENGINEERING.md).
+- Symbian 6.1: GCC 2.9 ABI, no writable static data in DLLs, small stacks.
+- The N-Gage only supports Bluetooth 1.1 with PIN pairing.
+- The ESP32 has little free memory while Bluetooth and Wi-Fi are running.
+- Everything must be testable without hardware.
 
-## 2 Components and interfaces
+## Components
 
-```
-┌────────────── N-Gage ───────────────┐      ┌──────── ESP32 ────────┐      ┌──── server ────┐
-│ game ─▶ ordinal thunks (GcExports)  │      │ main.cpp (Arduino)    │      │ gcs_main.c     │
-│        CGameBTComms1 / 2            │      │  BT SPP │ WiFi/TCP    │      │  sockets, poll │
-│        CGcEngine (active objects)   │ SPP  │  bridge_core.c        │ TCP  │  gcs_core.c    │
-│        gcd_dev core (portable C)  ◀─┼──────┼─▶ gc_link ⇄ gc_link ◀─┼──────┼─▶ gc_link      │
-│        gc_link / gc_msg / gc_codec  │      │  gc_msg               │      │  gc_msg        │
-└─────────────────────────────────────┘      └───────────────────────┘      └────────────────┘
-```
-
-| Module | Language | Depends on | Interface |
+| Part | Language | Files | Role |
 |---|---|---|---|
-| `protocol/` | C89 | nothing | `gc_codec.h` framing/CRC/COBS, `gc_link.h` reliable link, `gc_msg.h` messages |
-| `dll/core/gc_dev.*` | C89 | protocol | API-level functions (`gcd_v1_*`, `gcd_v2_*`), byte I/O (`gcd_transport_*`), event queue (`gcd_pop_event`) |
-| `dll/symbian/` | C++ (GCC 2.9) | core, Symbian | ordinal thunks → `CGameBTComms1/2` → `CGcEngine` (`MGcEventSink`, `MGcTransportObserver`) |
-| `firmware/src/bridge_core.*` | C89 | protocol | `bridge_dev_*` (SPP side), `bridge_srv_*` (TCP side), `bridge_poll`, `bridge_io` callbacks |
-| `firmware/src/main.cpp` | C++ Arduino | bridge_core | hardware glue, NVS config, console, web setup |
-| `server/src/gcs_core.*` | C99 | protocol | `gcs_core_conn_open/input/closed/poll`, `gcs_io` callbacks |
-| `server/src/gcs_main.c` | C99 | gcs_core | POSIX/Winsock front end, UDP LAN discovery |
+| Protocol | C89 | `protocol/` | Framing, reliable link, messages |
+| DLL engine | C89 | `dll/core/gc_dev.c` | All GameComms logic, independent of Symbian |
+| DLL adapter | C++ | `dll/symbian/` | Exports, Symbian objects, Bluetooth, timers, list UI |
+| Bridge engine | C89 | `firmware/src/bridge_core.c` | Forwarding between Bluetooth and TCP |
+| Bridge firmware | C++ (Arduino) | `firmware/src/main.cpp` | Hardware, Wi-Fi, settings, console, setup page |
+| Server engine | C99 | `server/src/gcs_core.c` | Registration, sessions, routing |
+| Server program | C99 | `server/src/gcs_main.c` | Sockets, configuration, LAN discovery |
 
-Every core is a passive state machine: no threads, no blocking, no clock
-of its own (time is passed in), no hidden I/O.  The same code therefore
-runs in a Symbian active object, in Arduino `loop()`, in a `poll()` server
-and in the deterministic simulator used by the tests.
+The engines are plain state machines: no threads, no blocking calls and
+no own clock (the current time is passed in). The same code therefore
+runs in a Symbian active object, in the Arduino loop, in the server's
+poll loop and in the test simulator.
 
-## 3 Responsibilities
+## Responsibilities
 
-**DLL** - everything the game can observe: roles, ids, game/connect
-states, callbacks and their order, GameComms 1.x game logic (start/min
-players, pause/continue/end, reconnect), GameComms 2.x connection logic
-(accept modes, declare/connect/disconnect), the built-in host list, the
-bridge pairing.  The host is the authority for game logic, as in the
-original.
+DLL: everything the game can observe. Roles, client ids, game and
+connection states, callbacks and their order, the 1.x game logic (start,
+pause, continue, end, reconnect), the 2.x connection logic (accept modes,
+declare, connect, disconnect), the host list and pairing with the bridge.
+As in the original, the host decides about the game state.
 
-**Bridge** - transport only: Bluetooth SPP acceptor towards the N-Gage,
-TCP initiator towards the server, Wi-Fi management, server discovery,
-reconnect with back-off, link resumption, forwarding with back-pressure,
-device identity (fills the N-Gage's Bluetooth address into REGISTER), access
-key, answering locally while the server is unreachable, releasing the
-device's server state if the N-Gage disappears.  It never interprets game
-traffic.
+Bridge: transport only. It accepts the Bluetooth connection from the
+N-Gage, connects to the server, reconnects after failures, resumes
+interrupted links, adds the N-Gage's Bluetooth address and the access key
+to the registration, and answers locally while the server is unreachable.
+It never looks at game data.
 
-**Server** - registration, game-UID/API isolated session directory,
-matchmaking (list or auto-join), slot assignment, routing (host ↔ clients,
-broadcast), membership changes, reservation of slots for rejoin, timeouts,
-resource limits.  It knows nothing about pause/continue.
+Server: registration, sessions separated by game UID and API version,
+host list, slot assignment, forwarding (host to client, client to host,
+host to all), rejoin, timeouts and resource limits. It knows nothing about
+pause or continue.
 
-## 4 State machines
+## States
 
-### 4.1 Link (each hop)
+### Link (each connection)
 
-```
-IDLE ─start─▶ HELLO_SENT ─HELLO_ACK─▶ UP ─timeout/transport lost─▶ DOWN
-               ▲   │ retry 1 s          │                           │
-               │   └────────────────────┘◀── start (same link_id) ──┘
-UP/DOWN ─CLOSE/REJECT/forget─▶ CLOSED
-```
-`UP_FRESH` vs `UP_RESUMED` tells the layer above whether the peer kept the
-session.
+- The connecting side sends HELLO until it gets HELLO_ACK. The link is
+  then up.
+- If no data arrives for too long, or the connection breaks, the link is
+  down. The connecting side reconnects with the same link id and both
+  sides resend what was not acknowledged.
+- If the other side no longer knows the link id, a fresh link starts and
+  the layer above is told that the other side's state was lost.
 
-### 4.2 Server: session and slot
+### Server session
 
-```
-session:  LOBBY ──SESSION_STATE playing/paused──▶ PLAYING/PAUSED ──▶ (closed)
-           ▲  └───────────────── lobby ◀────────────────┘
-slot:     EMPTY ─JOIN─▶ ACTIVE ─link lost (grace) / LEAVE(1) / KICK(1)─▶ RESERVED ─rejoin─▶ ACTIVE
-            ▲    └─CONFIRM─▶ PENDING ─accept─▶ ACTIVE        │ reserve_ms
-            └──────── LEAVE(0) / KICK(2) / lobby loss / expiry ┘
-host lost or HOST_CLOSE → SESSION_ENDED to every client, session removed
-```
+- A session is in the lobby, playing or paused. New players can only
+  join in the lobby.
+- A slot is empty, pending (waiting for the host's confirmation), active
+  or reserved.
+- A slot is reserved when its player is lost or leaves temporarily. The
+  same device can rejoin into it, also while playing. The reservation
+  expires after a timeout.
+- If the host leaves or is lost, the session ends for all clients.
 
-### 4.3 DLL, GameComms 1.x
+### DLL, GameComms 1.x
 
-```
-host:   IDLE ─StartHostL─▶ OPENING ─HOST_OPENED─▶ LOBBY ─players ≥ start─▶ PLAY ⇄ PAUSE
-client: IDLE ─StartClientL─▶ SELECTING ─select─▶ JOINING ─JOIN ok─▶ CONNECTED ─START─▶ PLAY ⇄ PAUSE
-PLAY/PAUSE ─End / host quit / not enough players / link lost─▶ OVER
-PAUSE ─Disconnect─▶ temporarily disconnected ─ReconnectL (both sides)─▶ PAUSE
-```
-Game end rules follow the SDK documentation: a client leaving while
-playing ends the game for everybody only if fewer than `aMinPlayers`
-remain (`KErrNotEnoughPlayers`), otherwise the host gets
-`ConnectedClientEndedGame`; while paused, disconnects are tolerated.
+- Host: StartHostL opens a session. When enough players have joined, the
+  game starts. The game can then be paused and continued.
+- Client: StartClientL shows the host list. After selecting a host the
+  client joins and waits for the start.
+- The game ends when a player ends it, the host leaves, too few players
+  remain or the connection is lost.
+- While paused, Disconnect disconnects temporarily and ReconnectL on both
+  sides restores the game.
 
-### 4.4 DLL, GameComms 2.x
+These rules follow the SDK documentation. A client leaving during a game
+ends it for everybody only if fewer than the minimum number of players
+remain (KErrNotEnoughPlayers). Otherwise the host gets
+ConnectedClientEndedGame.
 
-```
-host:   IDLE ─StartHostL─▶ session open, accept mode (0 all | 1 confirm | 2 closed)
-        client joins ─▶ mode 0: declared │ mode 1: ConfirmDevice/UI ─DeclareRemoteDevice─▶ declared
-        Connect() ─▶ mode 2, CONNECT to each declared client ─CONNECT_ACK─▶ Connected(id)
-client: IDLE ─StartClientL─▶ (list) ─DeclareRemoteDevice─▶ declared ─Connect()─▶ CONNECTING (joined)
-        ─host CONNECT─▶ CONNECTED ─Disconnect / host disconnect / loss─▶ NOT_CONNECTED
-```
+### DLL, GameComms 2.x
 
-## 5 Compatibility strategy
+- Host: StartHostL opens a session in accept mode 0 (all), 1 (confirm) or
+  2 (closed). Joining clients are declared directly (mode 0) or after
+  ConfirmDevice and DeclareRemoteDevice (mode 1).
+- Host Connect closes the session to new players and connects every
+  declared client. Each side reports Connected when this succeeds.
+- Client: StartClientL, then DeclareRemoteDevice with the chosen host,
+  then Connect.
+- Disconnect, a host disconnect or a lost connection report Disconnected.
 
-* **One source, many export tables.**  `dll/variants/variants.py` describes
-  every ordinal of every variant once and generates the `.def` files; the
-  build produces one DLL per variant from the same sources (only
-  `GC_VARIANT` differs).  Shared implementations get aliased export names.
-* **ABI by construction.**  Exports are `extern "C"` thunks with the
-  original register usage (`this` in r0), so the game's import ordinals
-  land on functions with the right argument layout without depending on
-  GCC 2.9 name mangling.  Objects handed to games derive from `CBase`, so
-  `delete` through the vtable works.  The two notify interfaces and
-  `TDeviceDetails`/`RSGEDebugLog` are declared with the verified layouts
+## Compatibility approach
+
+- One source, many export tables. `dll/variants/variants.py` describes
+  every ordinal of every variant and generates the `.def` files. The
+  build creates one DLL per variant from the same sources.
+- Exports are `extern "C"` functions with the original register usage, so
+  they do not depend on GCC 2.9 name mangling. Objects returned to games
+  derive from CBase, so deleting them works as before.
+- The callback interfaces and the data structures TDeviceDetails and
+  RSGEDebugLog use the layouts found in the originals
   (`dll/symbian/GcPlatform.h`).
-* **Asynchronous callbacks** from a `CAsyncCallBack`, never re-entrant from
-  inside an API call; the game may call the API from its callbacks.
-* **No writable static data**, no large stack buffers (events, scratch
-  `TDeviceDetails` and file buffers live on the heap).
-* **Isolation of uncertainty.**  Everything that is inferred rather than
-  verified (callback order inside one event, names of inert helpers, the
-  meaning of v10 helper ordinals) lives in one place each
-  (`gc_dev.c`, `GcExports.cpp`) and is covered by tests, so evidence from
-  real games can be applied without touching the rest.
+- Callbacks are always delivered asynchronously, never from inside an API
+  call. Games may call the API from inside a callback.
+- No writable static data and no large stack buffers.
+- Things that are inferred rather than verified (see
+  REVERSE_ENGINEERING.md) are kept in one place each and covered by
+  tests, so they can be corrected easily.
 
-## 6 Configuration
+## Configuration
 
 | Where | What | How |
 |---|---|---|
-| N-Gage | player name, bridge address/channel, auto-join, log | `E:\GameComms.ini` (optional; bridge address is saved after the first pairing) |
-| ESP32 | Wi-Fi, server host/port or `auto`, access key, Bluetooth name/PIN | serial console or web page (`GameCommsBridge-Setup` access point) |
-| Server | port, limits, timeouts, access key, logging | `gamecommsd.conf` or `--key=value` |
+| N-Gage | player name, bridge address, auto join, log | `E:\GameComms.ini` (optional) |
+| ESP32 | Wi-Fi, server, access key, Bluetooth name and PIN | serial console or setup web page |
+| Server | port, limits, timeouts, access key, logging | `gamecommsd.conf` or command line |
 
-## 7 Security
+## Security
 
-The server is meant to be reachable from the Internet.  Input is
-length-checked at every layer (fuzz-tested), sessions are isolated by game
-UID, clients can only address the host, resource limits cap peers,
-sessions and queued output, a slow peer is dropped instead of growing
-memory, and an optional access key restricts who may register.  Traffic is
-not encrypted (the N-Gage could not do TLS); use a VPN/WireGuard tunnel on
-the bridge's network if that matters.
+The server can be reachable from the Internet. All input is length
+checked at every layer and fuzz tested. Sessions are separated by game,
+clients can only send to their host, resource limits cap the number of
+peers, sessions and queued data, and slow peers are dropped. An optional
+access key restricts who can register. Traffic is not encrypted, because
+the N-Gage cannot do TLS. Use a VPN on the bridge's network if needed.

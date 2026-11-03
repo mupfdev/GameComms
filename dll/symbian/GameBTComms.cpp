@@ -429,6 +429,7 @@ TInt CGameBTComms2::DeclareRemoteDevice(const TDeviceDetails& aDevice)
     gcd_device dev;
     GcDetailsToDevice(aDevice, dev);
     TInt r = gcd_v2_declare(&iEngine->Dev(), &dev, iEngine->Now());
+    iEngine->LogNum(_L8("DeclareRemoteDevice, session"), (TInt)dev.session_id);
     iEngine->Kick();
     return r;
 }
@@ -440,6 +441,7 @@ TInt CGameBTComms2::Connect()
         return KErrNotReady;
     }
     TInt r = gcd_v2_connect(&iEngine->Dev(), GCD_ALL, iEngine->Now());
+    iEngine->LogNum(_L8("Connect, result"), r);
     iEngine->EnsureTransport();
     iEngine->Kick();
     return r;
@@ -463,6 +465,7 @@ void CGameBTComms2::Disconnect()
         return;
     }
     gcd_v2_disconnect(&iEngine->Dev(), GCD_ALL, 0, iEngine->Now());
+    iEngine->LogNum(_L8("Disconnect"), 0);
     iEngine->Kick();
 }
 
@@ -503,6 +506,7 @@ TInt CGameBTComms2::SetHostAcceptMode(TInt aMode)
         User::Panic(KGcMainPanic, 1);
     }
     TInt r = gcd_v2_set_accept_mode(&iEngine->Dev(), aMode, iEngine->Now());
+    iEngine->LogNum(_L8("SetHostAcceptMode"), aMode);
     iEngine->Kick();
     return r;
 }

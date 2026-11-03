@@ -35,6 +35,14 @@ public:
     virtual void ListCancelled() = 0;
 };
 
+/** Receives the answer to CGcEngine::RequestSessionList() (open sessions
+ *  of this game, for the game's own host search). */
+class MGcSessionListObserver
+{
+public:
+    virtual void SessionList(const gcd_device* aSessions, TInt aCount) = 0;
+};
+
 class CGcEngine : public CBase, public MGcTransportObserver, public MGcListObserver
 {
 public:
@@ -54,6 +62,16 @@ public:
     TBool IsShowingDialog() const;
 
     const TGcConfig& Config() const { return iConfig; }
+
+    /** The engine of the current thread (the DLL's thread-local storage),
+     *  NULL if no GameComms object has started yet.  Used by the helper
+     *  classes, which the game creates independently. */
+    static CGcEngine* Current();
+
+    /** Ask the server once for the open sessions of this game; the answer
+     *  goes to aObserver (one request at a time). */
+    void RequestSessionList(MGcSessionListObserver* aObserver);
+    void CancelSessionList(MGcSessionListObserver* aObserver);
     void Log(const TDesC8& aText);
     void LogNum(const TDesC8& aText, TInt aValue);
 
@@ -108,6 +126,7 @@ private:
     TBool            iLogOpen;
     TBool            iDispatching;
     gcd_event*       iEvent;      /* scratch, heap: events are ~1.1 KB */
+    MGcSessionListObserver* iListObserver;
 };
 
 #endif /* GCENGINE_H */

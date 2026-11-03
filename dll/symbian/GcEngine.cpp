@@ -10,8 +10,12 @@
 #include <coemain.h>
 #include <badesca.h>
 #include <e32hal.h>
+#include <e32svr.h>
 #include "GcEngine.h"
 #include "GcListControl.h"
+
+/* euser.lib of the 6.1 SDK lacks Dll::Tls; use the underlying UserSvr calls, keyed by the DLL's UID3 */
+static const TInt KGcTlsHandle = 0x101f5ee2;
 
 _LIT(KGcLogFile, "E:\\GameComms.log");
 _LIT(KGcSelectHost, "Select game");
@@ -118,6 +122,7 @@ void CGcEngine::ConstructL(TUint8 aApi, TUint8 aVariant, TUint32 aGameUid)
     iTickPeriodUs = period.Int();
     iLastTick = User::TickCount();
     iTimer->Start(KGcTimerUs, KGcTimerUs, TCallBack(TimerCallBack, this));
+    UserSvr::DllSetTls(KGcTlsHandle, this); /* for the helper classes (no writable static data in DLLs) */
 
     TBuf8<96> line;
     line.Copy(_L8("GameComms replacement, api "));
@@ -133,6 +138,10 @@ void CGcEngine::ConstructL(TUint8 aApi, TUint8 aVariant, TUint32 aGameUid)
 
 CGcEngine::~CGcEngine()
 {
+    if (UserSvr::DllTls(KGcTlsHandle) == this)
+    {
+        UserSvr::DllSetTls(KGcTlsHandle, NULL);
+    }
     if (iDev)
     {
         gcd_end_session(iDev, Now());
@@ -204,6 +213,28 @@ void CGcEngine::Kick()
     if (iDev->ev_count && !iDispatcher->IsActive())
     {
         iDispatcher->CallBack();
+    }
+}
+
+CGcEngine* CGcEngine::Current()
+{
+    return (CGcEngine*)UserSvr::DllTls(KGcTlsHandle);
+}
+
+void CGcEngine::RequestSessionList(MGcSessionListObserver* aObserver)
+{
+    iListObserver = aObserver;
+    Log(_L8("game searches for hosts"));
+    EnsureTransport();
+    gcd_discover_once(iDev, Now());
+    Kick();
+}
+
+void CGcEngine::CancelSessionList(MGcSessionListObserver* aObserver)
+{
+    if (iListObserver == aObserver)
+    {
+        iListObserver = NULL;
     }
 }
 
@@ -348,6 +379,17 @@ void CGcEngine::Dispatch()
                 break;
             case GCD_EV_TRANSPORT:
                 break;
+            case GCD_EV_DISCOVERED:
+            {
+                MGcSessionListObserver* obs = iListObserver;
+                iListObserver = NULL;
+                LogNum(_L8("open games found"), iEvent->id);
+                if (obs)
+                {
+                    obs->SessionList((const gcd_device*)iEvent->data, iEvent->id);
+                }
+                break;
+            }
             default:
             {
                 TRAPD(err, iSink.HandleGcEventL(*iEvent));

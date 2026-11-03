@@ -80,6 +80,29 @@ public:
 };
 
 /* ------------------------------------------------------------------ */
+/* Observers of the exported helper classes (GameComms 2.x).  Some      */
+/* games (e.g. Ashen) search for hosts themselves with the discoverer   */
+/* and check them with the resolver.  Layouts verified from the call    */
+/* sites in the originals: one function at vtable +0x08 each.           */
+/* ------------------------------------------------------------------ */
+
+/** CGameBTDiscoverer: once per device found (aError KErrNone), then once
+ *  with an empty TDeviceDetails and KErrEof when the search is over. */
+class MGameBTDiscovererObserver
+{
+public:
+    virtual void DeviceFound(const TDeviceDetails& aDevice, TInt aError) = 0; /* +0x08 */
+};
+
+/** CGameBTResolver: result of Start(): the device, its RFCOMM channel and
+ *  KErrNone, or KErrNotFound / another error. */
+class MGameBTResolverObserver
+{
+public:
+    virtual void Resolved(const TDeviceDetails& aDevice, TInt aChannel, TInt aError) = 0; /* +0x08 */
+};
+
+/* ------------------------------------------------------------------ */
 /* RSGEDebugLog - layout of the original (20 bytes, vptr at +0x10).    */
 /* Games may embed it, so the size must never change.  The shipped     */
 /* release builds were no-ops; so is this one.                         */

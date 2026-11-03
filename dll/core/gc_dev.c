@@ -391,6 +391,10 @@ static void kick_role(gcd_dev *d)
     {
         do_join(d, d->target.session_id, 0);
     }
+    if (d->discover_once && !d->selecting)
+    {
+        do_discover(d);
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -853,9 +857,42 @@ static void v2_client_ctl(gcd_dev *d, const gc_u8 *p, size_t n)
 /* message dispatch                                                    */
 /* ------------------------------------------------------------------ */
 
+static void report_discovered(gcd_dev *d, const gc_msg *m)
+{
+    gcd_event *e;
+    int        i, n = 0;
+    d->discover_once = 0;
+    e = ev_new(d, GCD_EV_DISCOVERED);
+    if (!e)
+    {
+        return;
+    }
+    for (i = 0; i < m->u.list.count && (size_t)(n + 1) * sizeof(gcd_device) <= sizeof(e->data); i++)
+    {
+        const gc_session_info *s = &m->u.list.s[i];
+        gcd_device             dev;
+        if (s->players >= s->max_players || s->state != GC_SS_LOBBY)
+        {
+            continue; /* full, other API generation, or not accepting players */
+        }
+        memset(&dev, 0, sizeof(dev));
+        dev.session_id = s->session_id;
+        dev.slot = GC_SLOT_HOST;
+        copy_name(dev.name, s->host_name);
+        memcpy(e->data + (size_t)n * sizeof(gcd_device), &dev, sizeof(dev));
+        n++;
+    }
+    e->id = n;
+    e->len = (gc_u16)((size_t)n * sizeof(gcd_device));
+}
+
 static void on_session_list(gcd_dev *d, const gc_msg *m)
 {
     int i;
+    if (d->discover_once)
+    {
+        report_discovered(d, m);
+    }
     if (!d->selecting)
     {
         return;
@@ -1338,7 +1375,17 @@ void gcd_poll(gcd_dev *d, gc_u32 now)
     {
         do_host_open(d);
     }
-    if (d->selecting && !GC_TIME_BEFORE(now, d->t_discover))
+    if ((d->selecting || d->discover_once) && !GC_TIME_BEFORE(now, d->t_discover))
+    {
+        do_discover(d);
+    }
+}
+
+void gcd_discover_once(gcd_dev *d, gc_u32 now)
+{
+    d->now = now;
+    d->discover_once = 1;
+    if (ready(d) && !d->selecting)
     {
         do_discover(d);
     }

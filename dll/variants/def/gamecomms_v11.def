@@ -2,7 +2,7 @@
 EXPORTS
 	rsge_ctor @ 1 NONAME ; RSGEDebugLog::RSGEDebugLog()
 	gc2_BluetoothPowerState @ 2 NONAME ; TInt CGameBTComms::BluetoothPowerState(TBool&)
-	gcx_Obj_Ret0_3=gcx_Obj_Ret0 @ 3 NONAME ; TInt CGameBTDiscoverer::Cancel()  [internal helper]
+	gcx_Disc_Cancel @ 3 NONAME ; TInt CGameBTDiscoverer::Cancel()  [internal helper]
 	gcx_List_Reset @ 4 NONAME ; void CGameBTDeviceList::Reset()  [internal helper]
 	rsge_void @ 5 NONAME ; void RSGEDebugLog::Close()
 	gc2_ConnectState @ 6 NONAME ; TConnectState CGameBTComms::ConnectState()
@@ -12,10 +12,10 @@ EXPORTS
 	gcx_List_Count @ 10 NONAME ; TInt CGameBTDeviceList::Count()  [internal helper]
 	gc2_DeclareRemoteDevice @ 11 NONAME ; TInt CGameBTComms::DeclareRemoteDevice(const TDeviceDetails&)
 	gcx_List_Delete @ 12 NONAME ; void CGameBTDeviceList::Delete(TInt)  [internal helper]
-	gcx_Obj_Member @ 13 NONAME ; T& CGameBTDiscoverer::Devices()  [internal helper]
+	gcx_Disc_DeviceClass @ 13 NONAME ; TBTDeviceClass& CGameBTDiscoverer::DeviceClass()  [internal helper]
 	gc2_Disconnect @ 14 NONAME ; void CGameBTComms::Disconnect()
 	gc2_DisconnectClient @ 15 NONAME ; TInt CGameBTComms::Disconnect(TUint16, TBool)  [host only]
-	gcx_Obj_StartWith @ 16 NONAME ; TInt CGameBTResolver::Start(const TDeviceDetails&)  [internal helper]
+	gcx_Res_Start @ 16 NONAME ; TInt CGameBTResolver::Start(const TDeviceDetails&)  [internal helper]
 	gcx_List_CurrentItem @ 17 NONAME ; TInt CGameBTDeviceList::CurrentItem()  [internal helper]
 	gcx_List_ListBox @ 18 NONAME ; CEikListBox* CGameBTDeviceList::ListBox()  [internal helper]
 	gcx_List_At @ 19 NONAME ; TDeviceDetails& CGameBTDeviceList::At(TInt)  [internal helper]
@@ -23,18 +23,18 @@ EXPORTS
 	gcx_List_Hide @ 21 NONAME ; void CGameBTDeviceList::Hide()  [internal helper]
 	gc2_HostAcceptMode @ 22 NONAME ; TAcceptMode CGameBTComms::HostAcceptMode()  [host only]
 	gcx_List_InsertL @ 23 NONAME ; void CGameBTDeviceList::InsertL(TInt, const TDeviceDetails&)  [internal helper]
-	gcx_Obj_RetTrue @ 24 NONAME ; TBool CGameBTDiscoverer::IsIdle()  [internal helper]
-	gcx_Obj_NewL_25=gcx_Obj_NewL @ 25 NONAME ; static CGameBTResolver* CGameBTResolver::NewL(M*, RSGEDebugLog*)  [internal helper]
+	gcx_Disc_IsIdle @ 24 NONAME ; TBool CGameBTDiscoverer::IsIdle()  [internal helper]
+	gcx_Res_NewL @ 25 NONAME ; static CGameBTResolver* CGameBTResolver::NewL(M*, RSGEDebugLog*)  [internal helper]
 	gcx_List_NewL @ 26 NONAME ; static CGameBTDeviceList* CGameBTDeviceList::NewL(const TRect&, M*, TBool, RSGEDebugLog*)  [internal helper]
 	gc2_NewL @ 27 NONAME ; static CGameBTComms* CGameBTComms::NewL(MGameBTCommsNotify*, TUint32, RSGEDebugLog*)
-	gcx_Obj_NewL_28=gcx_Obj_NewL @ 28 NONAME ; static CGameBTDiscoverer* CGameBTDiscoverer::NewL(M*, RSGEDebugLog*)  [internal helper]
+	gcx_Disc_NewL @ 28 NONAME ; static CGameBTDiscoverer* CGameBTDiscoverer::NewL(M*, RSGEDebugLog*)  [internal helper]
 	rsge_ret0_29=rsge_ret0 @ 29 NONAME ; TInt RSGEDebugLog::NewLine(TLogLevel)
 	rsge_ret0_30=rsge_ret0 @ 30 NONAME ; TInt RSGEDebugLog::Open()
-	gcx_Obj_Ret0_31=gcx_Obj_Ret0 @ 31 NONAME ; TInt CGameBTDiscoverer::StartL()  [internal helper]
+	gcx_Disc_StartL_31=gcx_Disc_StartL @ 31 NONAME ; TInt CGameBTDiscoverer::StartL()  [internal helper]
 	gc2_SendData @ 32 NONAME ; TInt CGameBTComms::SendData(const TDesC8&)
 	gc2_SendDataTo @ 33 NONAME ; TInt CGameBTComms::SendData(TUint16, const TDesC8&)  [host only]
 	gc2_SetBluetoothPowerState @ 34 NONAME ; TInt CGameBTComms::SetBluetoothPowerState(TBool)
-	gcx_Obj_SetWord @ 35 NONAME ; void CGameBTDiscoverer::Set...(const TUint32&)  [internal helper]
+	gcx_Disc_SetDeviceClass @ 35 NONAME ; void CGameBTDiscoverer::SetDeviceClass(const TBTDeviceClass&)  [internal helper]
 	gc2_SetHostAcceptMode @ 36 NONAME ; TInt CGameBTComms::SetHostAcceptMode(TAcceptMode)  [host only]
 	rsge_SetLoggingLevel @ 37 NONAME ; void RSGEDebugLog::SetLoggingLevel(TLogLevel)
 	gcx_List_Show @ 38 NONAME ; void CGameBTDeviceList::Show()  [internal helper]
@@ -49,17 +49,17 @@ EXPORTS
 	rsge_ret0_47=rsge_ret0 @ 47 NONAME ; TInt RSGEDebugLog::Write*/WriteLine*(...)  (no-op in all shipped builds)
 	rsge_ret0_48=rsge_ret0 @ 48 NONAME ; TInt RSGEDebugLog::Write*/WriteLine*(...)  (no-op in all shipped builds)
 	rsge_ret0_49=rsge_ret0 @ 49 NONAME ; TInt RSGEDebugLog::Write*/WriteLine*(...)  (no-op in all shipped builds)
-	gcx_Obj_dtor_50=gcx_Obj_dtor @ 50 NONAME ; CGameBTResolver::~CGameBTResolver()  [internal helper]
+	gcx_Res_dtor @ 50 NONAME ; CGameBTResolver::~CGameBTResolver()  [internal helper]
 	gcx_List_dtor @ 51 NONAME ; CGameBTDeviceList::~CGameBTDeviceList()  [internal helper]
 	gc2_dtor @ 52 NONAME ; CGameBTComms::~CGameBTComms()
 	rsge_dtor @ 53 NONAME ; RSGEDebugLog::~RSGEDebugLog()
-	gcx_Obj_dtor_54=gcx_Obj_dtor @ 54 NONAME ; CGameBTDiscoverer::~CGameBTDiscoverer()  [internal helper]
+	gcx_Disc_dtor @ 54 NONAME ; CGameBTDiscoverer::~CGameBTDiscoverer()  [internal helper]
 	gcx_List_AppendL @ 55 NONAME ; void CGameBTDeviceList::AppendL(const TDeviceDetails&)  [internal helper]
 	gc2_SetLocalDeviceName @ 56 NONAME ; TInt CGameBTComms::SetLocalDeviceName(THostName)
-	gcx_Obj_Ret0_57=gcx_Obj_Ret0 @ 57 NONAME ; TInt CGameBTDiscoverer::StartFullL()  [internal helper]
+	gcx_Disc_StartL_57=gcx_Disc_StartL @ 57 NONAME ; TInt CGameBTDiscoverer::StartFullL()  [internal helper]
 	gc2_EndSession @ 58 NONAME ; void CGameBTComms::EndSession()
 	gc2_DiscoverabilityOp_59=gc2_DiscoverabilityOp @ 59 NONAME ; TInt CGameBTComms::<discoverability helper 3>()
 	gc2_DiscoverabilityOp_60=gc2_DiscoverabilityOp @ 60 NONAME ; TInt CGameBTComms::<discoverability helper 2>()
 	gc2_SetDiscoverabilityModeLimited @ 61 NONAME ; TInt CGameBTComms::SetDiscoverabilityModeLimited(TBool)
-	gcx_Obj_SetArg @ 62 NONAME ; TInt CGameBTDiscoverer::SetSearchModeLimited(...)  [internal helper]
+	gcx_Disc_SetSearchMode @ 62 NONAME ; TInt CGameBTDiscoverer::SetSearchModeLimited(...)  [internal helper]
 	gc2_DiscoverabilityOp_63=gc2_DiscoverabilityOp @ 63 NONAME ; TInt CGameBTComms::<discoverability helper 1>()

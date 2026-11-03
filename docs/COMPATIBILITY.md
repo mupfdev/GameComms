@@ -86,7 +86,7 @@ The "Variants" column lists which variants have the export.
 |---|---|---|---|---|
 | 1 | RSGEDebugLog::RSGEDebugLog() | V | Full | v2 to v11 |
 | 2 | BluetoothPowerState(TBool&) | V | Full | v2 to v11 |
-| 3 | CGameBTDiscoverer::Cancel() | V | Inert | v2 to v11 |
+| 3 | CGameBTDiscoverer::Cancel() | V | Full | v2 to v11 |
 | 4 | CGameBTDeviceList::Reset() | V | Inert | v2 to v11 |
 | 5 | RSGEDebugLog::Close() | V | Full | v2 to v11 |
 | 6 | ConnectState() | V | Full | v2 to v11 |
@@ -96,10 +96,10 @@ The "Variants" column lists which variants have the export.
 | 10 | CGameBTDeviceList::Count() | V | Inert | v2 to v11 |
 | 11 | DeclareRemoteDevice(const TDeviceDetails&) | V | Full | v2 to v11 |
 | 12 | CGameBTDeviceList::Delete(TInt) | V | Inert | v2 to v11 |
-| 13 | CGameBTDiscoverer::Devices() | V | Inert | v2 to v11 |
+| 13 | CGameBTDiscoverer::DeviceClass() | V | Full | v2 to v11 |
 | 14 | Disconnect() | V | Full | v2 to v11 |
 | 15 | Disconnect(TUint16, TBool) | V | Full | v2 to v11 |
-| 16 | CGameBTResolver::Start(const TDeviceDetails&) | V | Inert | v2 to v11 |
+| 16 | CGameBTResolver::Start(const TDeviceDetails&) | V | Full | v2 to v11 |
 | 17 | CGameBTDeviceList::CurrentItem() | V | Inert | v2 to v11 |
 | 18 | CGameBTDeviceList::ListBox() | V | Inert | v2 to v11 |
 | 19 | CGameBTDeviceList::At(TInt) | V | Inert | v2 to v11 |
@@ -107,47 +107,55 @@ The "Variants" column lists which variants have the export.
 | 21 | CGameBTDeviceList::Hide() | V | Inert | v2 to v11 |
 | 22 | HostAcceptMode() | V | Full | v2 to v11 |
 | 23 | CGameBTDeviceList::InsertL(TInt, const TDeviceDetails&) | V | Inert | v2 to v11 |
-| 24 | CGameBTDiscoverer::IsIdle() | V | Inert | v2 to v11 |
-| 25 | CGameBTResolver::NewL(...) | V | Inert | v2 to v11 |
+| 24 | CGameBTDiscoverer::IsIdle() | V | Full | v2 to v11 |
+| 25 | CGameBTResolver::NewL(...) | V | Full | v2 to v11 |
 | 26 | CGameBTDeviceList::NewL(...) | V | Inert | v2 to v11 |
 | 27 | NewL(MGameBTCommsNotify*, TUint32, RSGEDebugLog*) | V | Full | v2 to v11 |
-| 28 | CGameBTDiscoverer::NewL(...) | V | Inert | v2 to v11 |
+| 28 | CGameBTDiscoverer::NewL(...) | V | Full | v2 to v11 |
 | 29, 30, 41 to 49 | RSGEDebugLog::NewLine, Open, WriteLine, Write | V/S | Full | v2 to v11 |
-| 31 | CGameBTDiscoverer::StartL() | V | Inert | v2 to v11 |
+| 31 | CGameBTDiscoverer::StartL() | V | Full | v2 to v11 |
 | 32 | SendData(const TDesC8&) | V | Full | v2 to v11 |
 | 33 | SendData(TUint16, const TDesC8&) | V | Full | v2 to v11 |
 | 34 | SetBluetoothPowerState(TBool) | V | Full | v2 to v11 |
-| 35 | CGameBTDiscoverer setter (const TUint32&) | V | Inert | v2 to v11 |
+| 35 | CGameBTDiscoverer::SetDeviceClass(const TBTDeviceClass&) | V | Full | v2 to v11 |
 | 36 | SetHostAcceptMode(TAcceptMode) | V | Full | v2 to v11 |
 | 37 | RSGEDebugLog::SetLoggingLevel() | V | Full | v2 to v11 |
 | 38 | CGameBTDeviceList::Show() | V | Inert | v2 to v11 |
 | 39 | StartClientL(TInt, CEikAppUi*) | V | Full | v2 to v11 |
 | 40 | StartHostL(TInt, CEikAppUi*) | V | Full | v2 to v11 |
-| 50 | CGameBTResolver destructor | V | Inert | v2 to v11 |
+| 50 | CGameBTResolver destructor | V | Full | v2 to v11 |
 | 51 | CGameBTDeviceList destructor | V | Inert | v2 to v11 |
 | 52 | ~CGameBTComms() | V | Full | v2 to v11 |
 | 53 | RSGEDebugLog destructor | V | Full | v2 to v11 |
-| 54 | CGameBTDiscoverer destructor | V | Inert | v2 to v11 |
+| 54 | CGameBTDiscoverer destructor | V | Full | v2 to v11 |
 | 55 | CGameBTDeviceList::AppendL(const TDeviceDetails&) | V | Inert | v2 to v11 |
 | 56 | SetLocalDeviceName(THostName) | V | Full | v3 to v11 |
-| 57 | CGameBTDiscoverer::StartFullL() | V | Inert | v5 to v11 |
+| 57 | CGameBTDiscoverer::StartFullL() | V | Full | v5 to v11 |
 | 58 | EndSession() | V | Full | v10, v11 |
 | 59, 60, 63 | discoverability helpers | I | Full (1) | v10, v11 |
 | 61 | SetDiscoverabilityModeLimited(TBool) | V | Full (1) | v10, v11 |
-| 62 | discoverer search mode setter | I | Inert | v10, v11 |
+| 62 | discoverer search mode setter | I | Full (1) | v10, v11 |
 
 (1) Returns KErrNone. Bluetooth discoverability has no meaning when the
 sessions run over the network.
 
-### Inert helper objects
+### Helper objects
 
-The device list, discoverer and resolver are internal parts of the
-original library that were exported as well. The replacement returns real
-objects that accept the same arguments. The list keeps its items
-(AppendL, InsertL, At, Count, Delete and Reset work). Discovery and
-resolution finish without results. If a game turns out to use these
-classes for its own host search, the discoverer can be connected to the
-network host list in `CGcEngine`.
+The device list, discoverer and resolver are parts of the original library
+that were exported as well. Some games use them for their own host search
+instead of the built-in list (Ashen does).
+
+- Discoverer: the original searched for nearby phones by Bluetooth. The
+  replacement asks the server for the open games of the same title and
+  reports each one to the game's observer as a "device" named after the
+  host, followed by the final KErrEof report, as the original did. Hosts
+  that do not accept players (accept mode 2) are not reported.
+- Resolver: the original checked a device's Bluetooth service records for
+  the game. The replacement answers KErrNone for entries from the
+  discoverer and KErrNotFound for anything else.
+- Device list: an inert stand-in. It keeps its items (AppendL, InsertL,
+  At, Count, Delete and Reset work) but shows nothing on screen. If a game
+  turns out to display this list, it has to be implemented as well.
 
 ### Differences to the original on the network
 

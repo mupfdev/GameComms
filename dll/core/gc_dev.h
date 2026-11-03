@@ -106,6 +106,7 @@ extern "C" {
 #define GCD_EV_UI_ADD_DEVICE          41 /* host confirm list: add device   */
 #define GCD_EV_UI_CLOSE               42 /* close any engine UI             */
 #define GCD_EV_TRANSPORT              43 /* err: bridge link problem        */
+#define GCD_EV_DISCOVERED             44 /* open sessions for gcd_discover_once(): id = count, data = gcd_device[] */
 
 /** A remote party as seen through TDeviceDetails (GameComms 2.x) or the
  *  host selection list.  Hosts are identified by their session id,
@@ -206,6 +207,7 @@ typedef struct
 
     /* client */
     int        selecting;      /* host selection in progress     */
+    int        discover_once;  /* one session list wanted (game's own host search) */
     int        joining;
     gc_u32     t_discover;
     gcd_device sessions[GCD_MAX_SESSIONS];
@@ -241,6 +243,11 @@ int gcd_role(const gcd_dev *d);
 int gcd_connect_state(const gcd_dev *d);
 int gcd_game_state(const gcd_dev *d);
 int gcd_is_selecting(const gcd_dev *d);
+
+/** Ask the server once for the open sessions of this game (lobby, not
+ *  full).  The answer arrives as one GCD_EV_DISCOVERED event; until then
+ *  the request is repeated every discover_ms once the device is registered. */
+void gcd_discover_once(gcd_dev *d, gc_u32 now);
 
 /** Client host selection result (UI): session id, or 0 for cancel. */
 void gcd_select_session(gcd_dev *d, gc_u32 session_id, gc_u32 now);

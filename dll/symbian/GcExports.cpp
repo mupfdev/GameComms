@@ -13,6 +13,7 @@
  **/
 
 #include "GameBTComms.h"
+#include "GcHelpers.h"
 
 #ifndef GC_VARIANT
 #define GC_VARIANT 6
@@ -138,10 +139,10 @@ GC_EXPORT TInt gc2_DiscoverabilityOp(CGameBTComms2* /*aThis*/) { return KErrNone
 
 /* ================================================================== */
 /* GameComms 2.x helper classes that the original exported as well:   */
-/* device list control, device discoverer and SDP resolver.  No game   */
-/* is known to use them directly (the library uses them internally).   */
-/* They are provided as inert, memory-safe objects so that a game that */
-/* does reference them keeps working; see docs/COMPATIBILITY.md.       */
+/* device list control, device discoverer and SDP resolver.  The       */
+/* discoverer and resolver work (Ashen uses them for its host search); */
+/* the list control is an inert, memory-safe stand-in so that a game   */
+/* that references it keeps working; see docs/COMPATIBILITY.md.        */
 /* ================================================================== */
 
 class CGcCompatList : public CBase
@@ -149,13 +150,6 @@ class CGcCompatList : public CBase
 public:
     CGcCompatList() : iArray(4) {}
     CArrayFixFlat<TDeviceDetails> iArray;
-};
-
-class CGcCompatObject : public CBase
-{
-public:
-    TUint32 iValue;
-    TUint8  iOpaque[64]; /* returned by accessors that exposed members */
 };
 
 GC_EXPORT CGcCompatList* gcx_List_NewL(const TRect*, TAny*, TInt, RSGEDebugLog*)
@@ -206,26 +200,45 @@ GC_EXPORT TAny* gcx_List_ListBox(CGcCompatList*) { return NULL; }
 GC_EXPORT void gcx_List_Show(CGcCompatList*) {}
 GC_EXPORT void gcx_List_Hide(CGcCompatList*) {}
 
-GC_EXPORT CGcCompatObject* gcx_Obj_NewL(TAny*, RSGEDebugLog*)
+/* ---- device discoverer and service resolver: working versions, see
+ *      GcHelpers.h (games like Ashen search for hosts with them) ---- */
+
+GC_EXPORT CGcDiscoverer* gcx_Disc_NewL(MGameBTDiscovererObserver* aObserver, TAny* /*aLog*/)
 {
-    return new (ELeave) CGcCompatObject;
+    return CGcDiscoverer::NewL(aObserver);
 }
 
-GC_EXPORT void gcx_Obj_dtor(CGcCompatObject* aThis, TInt aFlags)
+GC_EXPORT void gcx_Disc_dtor(CGcDiscoverer* aThis, TInt aFlags)
 {
-    aThis->CGcCompatObject::~CGcCompatObject();
+    aThis->CGcDiscoverer::~CGcDiscoverer();
     if (aFlags & 1)
     {
         User::Free(aThis);
     }
 }
 
-GC_EXPORT TInt gcx_Obj_Ret0(CGcCompatObject*) { return KErrNone; }
-GC_EXPORT TInt gcx_Obj_RetTrue(CGcCompatObject*) { return ETrue; }
-GC_EXPORT TAny* gcx_Obj_Member(CGcCompatObject* aThis) { return aThis->iOpaque; }
-GC_EXPORT void gcx_Obj_SetWord(CGcCompatObject* aThis, const TUint32& aValue) { aThis->iValue = aValue; }
-GC_EXPORT TInt gcx_Obj_SetArg(CGcCompatObject* aThis, TUint32 aValue) { aThis->iValue = aValue; return KErrNone; }
-GC_EXPORT TInt gcx_Obj_StartWith(CGcCompatObject*, const TDeviceDetails&) { return KErrNone; }
+GC_EXPORT TInt gcx_Disc_StartL(CGcDiscoverer* aThis) { return aThis->StartL(); }
+GC_EXPORT TInt gcx_Disc_Cancel(CGcDiscoverer* aThis) { return aThis->Cancel(); }
+GC_EXPORT TBool gcx_Disc_IsIdle(CGcDiscoverer* aThis) { return aThis->IsIdle(); }
+GC_EXPORT TUint32* gcx_Disc_DeviceClass(CGcDiscoverer* aThis) { return &aThis->DeviceClass(); }
+GC_EXPORT void gcx_Disc_SetDeviceClass(CGcDiscoverer* aThis, const TUint32& aClass) { aThis->SetDeviceClass(aClass); }
+GC_EXPORT TInt gcx_Disc_SetSearchMode(CGcDiscoverer* aThis, TUint32 aMode) { return aThis->SetSearchMode(aMode); }
+
+GC_EXPORT CGcResolver* gcx_Res_NewL(MGameBTResolverObserver* aObserver, TAny* /*aGameUid*/)
+{
+    return CGcResolver::NewL(aObserver);
+}
+
+GC_EXPORT void gcx_Res_dtor(CGcResolver* aThis, TInt aFlags)
+{
+    aThis->CGcResolver::~CGcResolver();
+    if (aFlags & 1)
+    {
+        User::Free(aThis);
+    }
+}
+
+GC_EXPORT TInt gcx_Res_Start(CGcResolver* aThis, const TDeviceDetails& aDevice) { return aThis->Start(aDevice); }
 
 /* ================================================================== */
 

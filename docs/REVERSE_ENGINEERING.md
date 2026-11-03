@@ -150,7 +150,27 @@ analysed as far as needed to understand the behaviour [V]:
    do both sides report Connected.
 5. Each connection uses two sockets, data is sent with a length prefix.
 
-### 2.4 RSGEDebugLog (all variants)
+### 2.4 Discoverer and resolver (2.x)
+
+Found in the v8 code [V]; the other 2.x variants have the same exports.
+
+- `CGameBTDiscoverer::NewL(observer, log)` creates an active object. The
+  observer has one function at vtable +0x08:
+  `(const TDeviceDetails& aDevice, TInt aError)`.
+- `StartL()` panics `GC-DISCOVERER` if a search is running, otherwise runs a
+  Bluetooth inquiry. Every device whose class matches the filter (default:
+  major service class 0x200, phone, cellular) is reported with KErrNone.
+  At the end the observer gets an empty TDeviceDetails with KErrEof (-25).
+- `Cancel()` returns KErrNotReady when idle; otherwise the search ends with
+  the same final KErrEof report. `IsIdle()` is true when no search runs.
+- Ordinal 13 returns a reference to the class filter, ordinal 35 sets it.
+- `CGameBTResolver::NewL(observer, game uid)`; `Start(const TDeviceDetails&)`
+  queries the device's service records. The observer (vtable +0x08) gets
+  `(const TDeviceDetails&, TInt aChannel, TInt aError)`: KErrNone with the
+  RFCOMM channel, KErrNotFound (-1) if the device has no matching record,
+  or the error.
+
+### 2.5 RSGEDebugLog (all variants)
 
 A 20 byte object with the vtable at offset 0x10 and the log level at 0x0c.
 All shipped variants were built with logging disabled: Open, NewLine,
@@ -210,5 +230,5 @@ The previous code, now in `legacy/`:
 |---|---|---|
 | Exact names of v10 ordinals 59, 60, 63 and of the helper class methods | [I] | Implemented as harmless functions returning KErrNone. Nothing depends on them. |
 | Meaning of the first argument of 2.x StartHostL and StartClientL | only non-zero tested [V] | Treated as "show the built-in list". |
-| Whether any game calls the exported helper classes | unknown, no game files were available | Safe inert implementations. Running `tools/gc_identify.py game` on the games will answer this. |
+| Whether any game calls the exported helper classes | Ashen (v8) uses the discoverer for its own host search (seen on hardware) | Discoverer and resolver implemented on top of the server's session list (see 2.4). The device list is still inert. |
 | Order of callbacks within one event in 1.x, for example HostDisconnected before EndMultiPlayerGame | [D] | Follows the SDK documentation. Kept in one place in `dll/core/gc_dev.c` and covered by tests. |

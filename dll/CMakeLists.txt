@@ -37,6 +37,7 @@ set(gc_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/symbian/GcListControl.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/symbian/GameBTComms.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/symbian/GcExports.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/symbian/GcHelpers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/symbian/bt/BTServiceSearcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/symbian/bt/MessageServiceSearcher.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/symbian/bt/SdpAttributeParser.cpp)

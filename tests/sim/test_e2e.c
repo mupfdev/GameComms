@@ -444,6 +444,61 @@ static void test_v2_client_ui_selection(void)
     sim_free(&W);
 }
 
+/* the game's own host search (Ashen and others): the client asks once for
+   the open sessions (CGameBTDiscoverer in the DLL), declares one, connects */
+static void test_v2_game_host_search(void)
+{
+    gcd_event *e;
+    sim_init(&W, 3, GC_API_V2, UID);
+    sim_run(&W, 500);
+    /* node 2 hosts but does not accept players: must not be listed */
+    gcd_v2_start(&W.n[2].dev, 1, 0, W.now);
+    gcd_v2_start(&W.n[0].dev, 1, 0, W.now);
+    gcd_v2_set_accept_mode(&W.n[0].dev, GCD_ACCEPT_ALL, W.now);
+    sim_run(&W, 300);
+    gcd_v2_start(&W.n[1].dev, 0, 0, W.now); /* no built-in list */
+    gcd_discover_once(&W.n[1].dev, W.now);
+    sim_run(&W, 500);
+    CHECK_EQ(sim_count(&W, 1, GCD_EV_DISCOVERED), 1);
+    CHECK_EQ(sim_count(&W, 1, GCD_EV_SESSION_LIST), 0);
+    e = sim_last(&W, 1, GCD_EV_DISCOVERED);
+    CHECK(e && e->id == 1);
+    if (e && e->id == 1)
+    {
+        gcd_device host = ((gcd_device *)e->data)[0];
+        CHECK_EQ(host.session_id, W.n[0].dev.session_id);
+        CHECK(strcmp(host.name, "ngage0") == 0);
+        gcd_v2_declare(&W.n[1].dev, &host, W.now);
+        gcd_v2_connect(&W.n[1].dev, GCD_ALL, W.now);
+    }
+    sim_run(&W, 400);
+    CHECK_EQ(sim_count(&W, 0, GCD_EV2_DEVICE_DECLARED), 1);
+    CHECK_EQ(gcd_v2_connect(&W.n[0].dev, GCD_ALL, W.now), 0);
+    sim_run(&W, 400);
+    CHECK_EQ(sim_count(&W, 1, GCD_EV2_CONNECTED), 1);
+    CHECK_EQ(sim_last(&W, 1, GCD_EV2_CONNECTED)->err, 0);
+    /* a second search finds nothing: the host closed its door on Connect() */
+    gcd_discover_once(&W.n[1].dev, W.now);
+    sim_run(&W, 500);
+    CHECK_EQ(sim_count(&W, 1, GCD_EV_DISCOVERED), 2);
+    e = sim_last(&W, 1, GCD_EV_DISCOVERED);
+    CHECK(e && e->id == 0);
+    sim_free(&W);
+}
+
+/* asking before the bridge connection is up: answered once it is */
+static void test_v2_game_host_search_early(void)
+{
+    sim_init(&W, 2, GC_API_V2, UID);
+    gcd_discover_once(&W.n[1].dev, W.now); /* nothing registered yet */
+    sim_run(&W, 200);
+    gcd_v2_start(&W.n[0].dev, 1, 0, W.now);
+    gcd_v2_set_accept_mode(&W.n[0].dev, GCD_ACCEPT_ALL, W.now);
+    sim_run(&W, 3000);
+    CHECK_EQ(sim_count(&W, 1, GCD_EV_DISCOVERED), 1);
+    sim_free(&W);
+}
+
 static void test_v2_real_bt_device_declared(void)
 {
     /* a game that discovered a real Bluetooth device itself declares it
@@ -587,6 +642,8 @@ int main(void)
     RUN(test_v2_data);
     RUN(test_v2_not_connected_errors);
     RUN(test_v2_confirm_mode);
+    RUN(test_v2_game_host_search);
+    RUN(test_v2_game_host_search_early);
     RUN(test_v2_closed_host_rejects);
     RUN(test_v2_disconnect);
     RUN(test_v2_client_ui_selection);

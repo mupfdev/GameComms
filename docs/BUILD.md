@@ -6,7 +6,7 @@
 |---|---|---|
 | Replacement DLLs | ngage-toolchain (Windows), CMake, Ninja, Python 3 | `build/dll/out/vN/gamecomms.dll` |
 | ESP32 firmware | PlatformIO | flashed bridge |
-| PC bridge | Visual Studio or MinGW, CMake | `gcbridge.exe` |
+| PC bridge | Linux: C compiler, CMake; Windows: Visual Studio or MinGW, CMake | `gcbridge` |
 | Server | C99 compiler, CMake | `gamecommsd` |
 | Tests | C compiler, CMake, Python 3 | test report |
 
@@ -127,19 +127,74 @@ reboot
 - `status` shows the current state, `setup` restarts in setup mode,
   `factory` erases all settings.
 
-## PC bridge (Windows)
+## PC bridge (Linux and Windows)
 
-The PC bridge `gcbridge.exe` does the same as the ESP32 bridge, using the
-PC's Bluetooth adapter instead. One PC can serve several N-Gages at the
-same time (default 4, at most 7).
+The PC bridge `gcbridge` does the same as the ESP32 bridge, using the
+computer's Bluetooth adapter instead. One computer can serve several
+N-Gages at the same time (default 4, at most 7). Each N-Gage gets its own
+connection to the server.
 
-Requirements: Windows 10 or 11 with a Bluetooth adapter (built in or a
-USB dongle) that is switched on.
+Linux is the recommended platform, for example a Raspberry Pi. On Windows
+the bridge depends on the Bluetooth adapter and may not work at all, see
+"Windows: known problem" below.
 
-### Getting it
+### Linux and Raspberry Pi
 
-Download `gcbridge-windows` from the latest CI run on GitHub (Actions tab),
-or build it:
+Requirements: BlueZ 5 (the standard Linux Bluetooth stack, installed on
+Raspberry Pi OS, Debian, Ubuntu and most other distributions), a C
+compiler and CMake. No other libraries are needed.
+
+```sh
+sudo apt install build-essential cmake bluez
+cmake -S pcbridge -B build/pcbridge -DCMAKE_BUILD_TYPE=Release
+cmake --build build/pcbridge
+```
+
+The bridge talks to BlueZ, so the user running it must be allowed to: run
+it as root, or add the user to the `bluetooth` group once
+(`sudo usermod -aG bluetooth $USER`, then log in again). Make sure
+Bluetooth is not blocked (`rfkill unblock bluetooth`).
+
+```sh
+./build/pcbridge/gcbridge --server=auto
+```
+
+On start the bridge switches the adapter on, makes it visible and
+pairable, registers the Serial Port service and answers pairing requests
+with the PIN (default `1234`). On the N-Gage, start a multiplayer game and
+select the computer from the Bluetooth device list.
+
+To start it automatically with systemd, create
+`/etc/systemd/system/gcbridge.service`:
+
+```ini
+[Unit]
+Description=GameComms PC bridge
+After=bluetooth.service network-online.target
+Wants=bluetooth.service network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/gcbridge -c /etc/gcbridge.ini
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```sh
+sudo install build/pcbridge/gcbridge /usr/local/bin/
+sudo install -m 644 pcbridge/gcbridge.ini /etc/gcbridge.ini
+sudo systemctl enable --now gcbridge
+```
+
+Use `adapter = hci1` in `gcbridge.ini` if the computer has more than one
+Bluetooth adapter.
+
+### Windows
+
+Requirements: Windows 10 or 11 with a Bluetooth adapter that is switched
+on. Download `gcbridge-windows` from the latest CI run on GitHub (Actions
+tab), or build it:
 
 ```bat
 cmake -S pcbridge -B build\pcbridge
@@ -150,41 +205,72 @@ The result is `build\pcbridge\Release\gcbridge.exe`. It has no
 dependencies and can be copied to any Windows PC together with
 `pcbridge\gcbridge.ini`.
 
-### Using it
-
 1. Start the server (on this PC or another one), see below.
 2. Start `gcbridge.exe`. It shows the Bluetooth channel it uses and
    whether it found the server.
 3. On the N-Gage, start a multiplayer game. When the Bluetooth device
    list appears, select this PC.
 4. If the N-Gage asks for a PIN, enter `1234`. The bridge answers the
-   pairing request automatically, no Windows dialog is needed.
-
-Several N-Gages can connect to the same PC. Each one gets its own
-connection to the server.
+   pairing request automatically.
 
 If the N-Gage does not find the PC, open the Bluetooth settings in Windows
 while searching (Windows 11: set "Bluetooth devices discovery" to
 "Advanced"), or pair the N-Gage once from Windows with "Add device".
 
+#### Windows: known problem
+
+On the first PC tested (Windows 11), Windows did not complete the
+N-Gage's connection: the N-Gage found the PC and its Serial Port service,
+but its connection attempt never finished (the N-Gage log stops at
+`connecting RFCOMM channel N`, the bridge sees nothing). The same happened
+with the bridge's own service and with Windows' own incoming COM port, so
+the problem lies in the Windows Bluetooth stack or the adapter's driver,
+not in the bridge. A different Bluetooth adapter may behave differently.
+If it happens, use Linux (for example a Raspberry Pi) or an ESP32 bridge.
+
+#### COM mode
+
+COM mode lets Windows itself accept the N-Gage's connection and pass it to
+the bridge through a COM port. It did not help on the PC described above,
+but may on others.
+
+1. Open the classic Bluetooth settings: Settings, Bluetooth & devices,
+   Devices, "More Bluetooth settings" (or run `control bthprops.cpl` and
+   choose "Change Bluetooth settings").
+2. On the "COM Ports" tab click "Add", choose "Incoming (device initiates
+   the connection)" and confirm. Note the port name, for example `COM5`.
+   If no name appears, close and reopen the dialog or look under
+   "Ports (COM & LPT)" in Device Manager.
+3. Start the bridge with `gcbridge --com=COM5`, or set `com = COM5` in
+   `gcbridge.ini`.
+4. On the N-Gage, delete the `[Bridge]` section in `E:\GameComms.ini` if
+   it exists, start a multiplayer game and select this PC.
+
+Every incoming COM port publishes its own Serial Port service and the
+N-Gage uses the last one it finds, so remove incoming ports you do not need
+or list them all (`com = COM5,COM6`). In COM mode the bridge does not
+answer pairing requests; pair the N-Gage with Windows as usual.
+
 ### Settings
 
-`gcbridge.ini` is read from the current folder or from the folder of
-`gcbridge.exe`. Every setting can also be given on the command line, for
-example `gcbridge --server=my.server.name --key=secret`.
+`gcbridge.ini` is read from the current folder or from the folder of the
+program. Every setting can also be given on the command line, for example
+`gcbridge --server=my.server.name --key=secret`.
 
 | Setting | Default | Meaning |
 |---|---|---|
 | `server` | `auto` | server host name or IP address, `auto` finds it on the local network |
 | `port` | `9888` | server port |
 | `key` | empty | access key, if the server requires one |
-| `pin` | `1234` | PIN for pairing; empty = confirm pairing in Windows |
+| `pin` | `1234` | PIN for pairing; empty = pair the N-Gage with the system's own tools |
 | `name` | `GameComms Bridge` | name of the Bluetooth service |
 | `max_devices` | `4` | N-Gages at the same time (1 to 7) |
 | `log_level` | `2` | 0 errors, 1 warnings, 2 information, 3 debug |
-| `channel` | `0` | RFCOMM channel, 0 = any free channel |
+| `channel` | `0` | RFCOMM channel, 0 = chosen automatically |
+| `adapter` | `hci0` | Linux only: Bluetooth adapter |
+| `com` | empty | Windows only: COM mode with incoming Bluetooth COM port(s), e.g. `COM5,COM6` |
 
-The N-Gage sees the PC under its Windows Bluetooth name.
+The N-Gage sees the computer under its Bluetooth name.
 
 ## Server
 
@@ -255,7 +341,8 @@ ctest --test-dir build/tests --output-on-failure
 | `server_core` | Registration, matchmaking, slots, isolation by game, routing, timeouts, rejoin, kick |
 | `e2e_simulated` | DLL logic, bridge and server together with simulated Bluetooth and TCP: all 1.x and 2.x game flows, interruptions, reconnects, bridge reboot |
 | `e2e_network` | Real server and `gcsim` over TCP, 2 to 4 players, wrong access key |
-| `pcbridge_network` | Real server, PC bridge and `gcsim` over TCP (instead of Bluetooth): 1.x and 2.x, explicit server and LAN discovery, an N-Gage dropping out and coming back |
+| `pcbridge_bluez` | PC bridge on Linux against a simulated BlueZ on a private D-Bus bus: adapter setup, Serial Port profile and pairing agent registration, PIN answer, connections handed over by BlueZ, reconnect, clean unregistration (skipped without `dbus-daemon` and Python dbus) |
+| `pcbridge_network` | Real server, PC bridge and `gcsim` over TCP (instead of Bluetooth): 1.x and 2.x, explicit server and LAN discovery, an N-Gage dropping out and coming back, COM mode through a pseudo terminal including an N-Gage restarting on the same port |
 | `dll_variants` | Export tables of all variants compared with the original DLLs |
 
 CI runs these tests on Linux and Windows and also builds the Docker image,

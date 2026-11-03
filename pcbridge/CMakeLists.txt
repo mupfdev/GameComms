@@ -3,9 +3,10 @@
 #   cmake -S pcbridge -B build/pcbridge
 #   cmake --build build/pcbridge --config Release
 #
-# Windows: Visual Studio or MinGW, no other dependencies.  The program is
-# linked statically, so gcbridge.exe can be copied to any Windows PC.
-# Other systems build it without Bluetooth (test mode only).
+# Linux: any C compiler; Bluetooth through BlueZ over D-Bus, no libraries
+# needed.  Windows: Visual Studio or MinGW, linked statically, so
+# gcbridge.exe can be copied to any Windows PC.  Other systems build it
+# without Bluetooth (test mode only).
 
 cmake_minimum_required(VERSION 3.15)
 cmake_policy(SET CMP0091 NEW)
@@ -23,9 +24,11 @@ set(sources
     ${GC_ROOT}/firmware/src/bridge_core.c
     src/pcb_main.c)
 if(WIN32)
-    list(APPEND sources src/pcb_bt_win.c)
+    list(APPEND sources src/pcb_bt_win.c src/pcb_com_win.c)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND sources src/pcb_bt_linux.c src/pcb_com_posix.c)
 else()
-    list(APPEND sources src/pcb_bt_none.c)
+    list(APPEND sources src/pcb_bt_none.c src/pcb_com_posix.c)
 endif()
 
 add_executable(gcbridge ${sources})

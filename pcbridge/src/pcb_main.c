@@ -29,6 +29,7 @@
 #include <time.h>
 #include "bridge_core.h"
 #include "pcb_bt.h"
+#include "pcb_com.h"
 
 #define PCB_VERSION        "1.0.0"
 #define PCB_MAX_DEVICES    7
@@ -51,6 +52,8 @@ typedef struct
     int  log_level;
     int  bluetooth;
     int  device_tcp;
+    char com[256];    /* serial ports, e.g. "COM5" or "COM5,COM6" */
+    char adapter[32]; /* Linux: Bluetooth adapter, e.g. hci0 */
 } pcb_config;
 
 static pcb_config g_cfg;
@@ -67,10 +70,13 @@ static void config_defaults(pcb_config *c)
     c->bluetooth = 1;
 }
 
+/* copies at most n-1 characters and always terminates */
 static void copy_str(char *dst, size_t n, const char *src)
 {
-    strncpy(dst, src, n - 1);
-    dst[n - 1] = '\0';
+    size_t k = strlen(src);
+    if (k > n - 1) k = n - 1;
+    memmove(dst, src, k);
+    dst[k] = '\0';
 }
 
 static int config_set(pcb_config *c, const char *k, const char *v)
@@ -85,6 +91,8 @@ static int config_set(pcb_config *c, const char *k, const char *v)
     else if (!strcmp(k, "log_level")) c->log_level = atoi(v);
     else if (!strcmp(k, "bluetooth")) c->bluetooth = atoi(v);
     else if (!strcmp(k, "device_tcp")) c->device_tcp = atoi(v);
+    else if (!strcmp(k, "com")) copy_str(c->com, sizeof(c->com), v);
+    else if (!strcmp(k, "adapter")) copy_str(c->adapter, sizeof(c->adapter), v);
     else return -1;
     return 0;
 }
@@ -251,6 +259,12 @@ typedef struct
     gc_u8  addr[6];
 
     sock_t dev_fd;     /* Bluetooth (or test TCP) connection to the N-Gage */
+    pcb_com *com;      /* COM mode: serial port instead of dev_fd */
+    char   com_name[64];
+    gc_u32 t_com_retry;
+    int    com_up;     /* link to the N-Gage on this port is up */
+    int    com_lines;  /* last modem line state, for the log */
+    int    com_rx_seen; /* data seen since the link was last up */
     outbuf dev_out;
     int    dev_error;
     gc_u32 t_gone;     /* when the N-Gage disconnected */
@@ -273,9 +287,36 @@ static struct sockaddr_in g_found;
 static int                g_have_found;
 static gc_u32             g_t_discover;
 
+static void com_flush(pcb_dev *p)
+{
+    while (p->com && p->dev_out.len > 0)
+    {
+        int n = pcb_com_write(p->com, p->dev_out.data, (int)p->dev_out.len);
+        if (n < 0)
+        {
+            p->dev_error = 1;
+            return;
+        }
+        if (n == 0) return; /* try again in the next loop */
+        memmove(p->dev_out.data, p->dev_out.data + n, p->dev_out.len - (size_t)n);
+        p->dev_out.len -= (size_t)n;
+    }
+}
+
 static void d_dev_write(void *ctx, const gc_u8 *d, size_t n)
 {
     pcb_dev *p = (pcb_dev *)ctx;
+    if (p->com_name[0])
+    {
+        if (!p->com || p->dev_error) return;
+        if (out_append(&p->dev_out, d, n) != 0)
+        {
+            out_free(&p->dev_out); /* nobody reads the port: drop, the link retransmits */
+            return;
+        }
+        com_flush(p);
+        return;
+    }
     if (p->dev_fd == SOCK_INVALID || p->dev_error) return;
     if (out_append(&p->dev_out, d, n) != 0 || out_flush(p->dev_fd, &p->dev_out) != 0) p->dev_error = 1;
 }
@@ -331,6 +372,7 @@ static pcb_dev *dev_find(const gc_u8 addr[6])
 static void dev_free(pcb_dev *p)
 {
     if (p->dev_fd != SOCK_INVALID) sock_close(p->dev_fd);
+    pcb_com_close(p->com);
     out_free(&p->dev_out);
     srv_close(p);
     g_dev[p->index] = NULL;
@@ -351,7 +393,8 @@ static pcb_dev *dev_new(const gc_u8 addr[6], gc_u32 now)
         for (i = 0; i < PCB_MAX_DEVICES; i++)
         {
             pcb_dev *q = g_dev[i];
-            if (q && q->dev_fd == SOCK_INVALID && (!old || (gc_u32)(now - q->t_gone) > (gc_u32)(now - old->t_gone)))
+            if (q && q->dev_fd == SOCK_INVALID && !q->com_name[0] &&
+                (!old || (gc_u32)(now - q->t_gone) > (gc_u32)(now - old->t_gone)))
             {
                 old = q;
             }
@@ -424,6 +467,119 @@ static void dev_accepted(sock_t s, const gc_u8 addr[6], gc_u32 now)
     p->dev_fd = s;
     logmsg(2, "N-Gage %s connected", p->addr_str);
     bridge_dev_connected(&p->br, addr, now);
+}
+
+/* ---- COM mode ---- */
+
+static void com_open(pcb_dev *p, gc_u32 now)
+{
+    char err[160];
+    p->t_com_retry = now;
+    p->com = pcb_com_open(p->com_name, err, sizeof(err));
+    if (!p->com)
+    {
+        logmsg(1, "%s (retrying)", err);
+        return;
+    }
+    p->dev_error = 0;
+    p->com_lines = pcb_com_lines(p->com);
+    p->com_rx_seen = 0;
+    out_free(&p->dev_out);
+    logmsg(2, "listening for an N-Gage on %s", p->com_name);
+    bridge_dev_connected(&p->br, p->addr, now);
+}
+
+static void com_fail(pcb_dev *p, gc_u32 now)
+{
+    logmsg(1, "%s failed, reopening", p->com_name);
+    pcb_com_close(p->com);
+    p->com = NULL;
+    p->com_up = 0;
+    p->t_com_retry = now;
+    out_free(&p->dev_out);
+    bridge_dev_disconnected(&p->br, now);
+}
+
+/* A COM port has no reliable "connected" signal: the N-Gage is noticed by
+   its data and its absence by the link's keep-alive timeout. */
+static void com_service(pcb_dev *p, gc_u32 now)
+{
+    gc_u8 buf[1024];
+    int   n, up;
+    if (!p->com)
+    {
+        if ((gc_u32)(now - p->t_com_retry) >= 3000) com_open(p, now);
+        if (!p->com) return;
+    }
+    {
+        int lines = pcb_com_lines(p->com);
+        if (lines != p->com_lines)
+        {
+            /* carrier detect / DSR come up when a device connects to the port */
+            logmsg(2, "%s: lines CTS %d DSR %d RING %d CD %d", p->com_name, lines & 1, (lines >> 1) & 1,
+                   (lines >> 2) & 1, (lines >> 3) & 1);
+            p->com_lines = lines;
+        }
+    }
+    while ((n = pcb_com_read(p->com, buf, sizeof(buf))) > 0)
+    {
+        int st = p->br.dev.state;
+        if (st != GC_LS_UP && !p->com_rx_seen)
+        {
+            p->com_rx_seen = 1;
+            logmsg(2, "%s: receiving data (%d bytes), waiting for the N-Gage's handshake", p->com_name, n);
+        }
+        logmsg(3, "%s: %d bytes in", p->com_name, n);
+        if (st != GC_LS_UP && st != GC_LS_WAIT_HELLO && st != GC_LS_IDLE)
+        {
+            bridge_dev_connected(&p->br, p->addr, now); /* listen for a new HELLO */
+        }
+        bridge_dev_input(&p->br, buf, (size_t)n, now);
+    }
+    if (n < 0) p->dev_error = 1;
+    if (!p->dev_error) com_flush(p);
+    if (p->dev_error)
+    {
+        com_fail(p, now);
+        return;
+    }
+    up = p->br.dev.state == GC_LS_UP;
+    if (up != p->com_up)
+    {
+        p->com_up = up;
+        if (up) logmsg(2, "N-Gage connected on %s", p->com_name);
+        else logmsg(2, "N-Gage on %s is gone", p->com_name);
+        p->com_rx_seen = 0;
+    }
+}
+
+static int com_setup(gc_u32 now)
+{
+    const char *c = g_cfg.com;
+    int         n = 0;
+    while (*c && n < PCB_MAX_DEVICES)
+    {
+        char name[64];
+        size_t k = 0;
+        while (*c == ',' || *c == ' ' || *c == ';') c++;
+        while (*c && *c != ',' && *c != ' ' && *c != ';' && k + 1 < sizeof(name)) name[k++] = *c++;
+        name[k] = '\0';
+        if (k == 0) break;
+        {
+        /* made-up address 02:47:43:43:4f:nn per port, so that the server
+           recognises the same N-Gage after a reconnect */
+        gc_u8    addr[6] = {0x02, 0x47, 0x43, 0x43, 0x4f, 0};
+        pcb_dev *p;
+        addr[5] = (gc_u8)n;
+        if (g_cfg.max_devices < n + 1) g_cfg.max_devices = n + 1;
+        p = dev_new(addr, now);
+        if (!p) break;
+        copy_str(p->com_name, sizeof(p->com_name), name);
+        com_open(p, now);
+        n++;
+        }
+    }
+    return n;
 }
 
 /* ------------------------------------------------------------------ */
@@ -584,7 +740,7 @@ static void print_status(void)
         pcb_dev *p = g_dev[i];
         if (!p) continue;
         logmsg(2, "status: N-Gage %s %s, server %s, messages to server %lu, from server %lu", p->addr_str,
-               p->dev_fd != SOCK_INVALID ? "connected" : "away", p->br.srv_state == GC_BS_UP ? "up" : "down",
+               (p->dev_fd != SOCK_INVALID || p->com_up) ? "connected" : "away", p->br.srv_state == GC_BS_UP ? "up" : "down",
                (unsigned long)p->br.st_dev_msgs, (unsigned long)p->br.st_srv_msgs);
     }
 }
@@ -676,9 +832,12 @@ static void usage(void)
            "  --pin=NNNN           PIN for pairing N-Gages, empty = confirm in Windows (default 1234)\n"
            "  --name=TEXT          Bluetooth service name (default GameComms Bridge)\n"
            "  --channel=N          RFCOMM channel, 0 = any (default 0)\n"
+           "  --adapter=hciN       Linux: Bluetooth adapter (default hci0)\n"
            "  --max_devices=N      N-Gages at the same time, 1 to 7 (default 4)\n"
            "  --log_level=N        0 errors .. 3 debug (default 2)\n"
            "  --bluetooth=0|1      use Bluetooth (default 1)\n"
+           "  --com=COM5[,COM6]    COM mode: use Windows' incoming Bluetooth COM port(s) instead\n"
+           "                       of the bridge's own Bluetooth service\n"
            "  --device_tcp=PORT    also accept test devices over TCP on 127.0.0.1:PORT\n\n"
            "Without -c, gcbridge.ini is read from the current folder or the program's folder.\n",
            PCB_VERSION);
@@ -688,7 +847,7 @@ int main(int argc, char **argv)
 {
     sock_t     tcp_l = SOCK_INVALID;
     gc_u32     t_status;
-    int        i, bt_ok = 0;
+    int        i, bt_ok = 0, ncom = 0;
     const char *cfgfile = NULL;
 #ifdef _WIN32
     WSADATA w;
@@ -736,13 +895,21 @@ int main(int argc, char **argv)
     logmsg(2, "GameComms PC bridge %s, server %s%s%d, up to %d N-Gages", PCB_VERSION, g_cfg.server,
            is_auto() ? " (local network), port " : ":", g_cfg.port, g_cfg.max_devices);
 
-    if (g_cfg.bluetooth)
+    if (g_cfg.com[0])
+    {
+        /* Windows answers the N-Gage itself; a second Serial Port service
+           of our own would only confuse the N-Gage's service search */
+        ncom = com_setup(now_ms());
+        logmsg(2, "COM mode: the bridge's own Bluetooth service is not used");
+    }
+    else if (g_cfg.bluetooth)
     {
         pcb_bt_cfg bc;
         char       err[256];
         bc.service_name = g_cfg.name;
         bc.pin = g_cfg.pin;
         bc.channel = g_cfg.channel;
+        bc.adapter = g_cfg.adapter;
         bc.log = logmsg;
         if (pcb_bt_open(&bc, err, sizeof(err)) == 0)
         {
@@ -765,12 +932,12 @@ int main(int argc, char **argv)
             logmsg(2, "test devices accepted on 127.0.0.1:%d", g_cfg.device_tcp);
         }
     }
-    if (!bt_ok && tcp_l == SOCK_INVALID)
+    if (!bt_ok && tcp_l == SOCK_INVALID && ncom == 0)
     {
         logmsg(0, "nothing to listen on, exiting");
         return fail_exit(1);
     }
-    if (bt_ok)
+    if (bt_ok || ncom)
     {
         logmsg(2, "ready: on the N-Gage, start a multiplayer game and select this PC");
     }
@@ -782,7 +949,7 @@ int main(int argc, char **argv)
         fd_set         rs, ws, es;
         struct timeval tv;
         gc_u32         now = now_ms(), wait = 50;
-        int            maxfd = 0;
+        int            maxfd = 0, nsock = 0;
         sock_t         bl = pcb_bt_listener();
 
 #define ADD(set, s)                                   \
@@ -790,6 +957,7 @@ int main(int argc, char **argv)
     {                                                 \
         FD_SET((s), (set));                           \
         if ((int)(s) > maxfd) maxfd = (int)(s);       \
+        nsock++;                                      \
     } while (0)
 
         FD_ZERO(&rs);
@@ -817,10 +985,23 @@ int main(int argc, char **argv)
             }
             t = bridge_next_timeout(&p->br, now);
             if (t < wait) wait = t;
+            if (p->com_name[0] && wait > 5) wait = 5; /* serial ports are polled */
         }
         tv.tv_sec = 0;
         tv.tv_usec = (long)(wait ? wait : 1) * 1000;
-        if (select(maxfd + 1, &rs, &ws, &es, &tv) < 0)
+        if (nsock == 0)
+        {
+            /* Windows' select() refuses empty sets */
+#ifdef _WIN32
+            Sleep(wait ? wait : 1);
+#else
+            struct timespec ts;
+            ts.tv_sec = 0;
+            ts.tv_nsec = (long)(wait ? wait : 1) * 1000000L;
+            nanosleep(&ts, NULL);
+#endif
+        }
+        else if (select(maxfd + 1, &rs, &ws, &es, &tv) < 0)
         {
 #ifdef _WIN32
             Sleep(10);
@@ -834,8 +1015,8 @@ int main(int argc, char **argv)
         if (bl != SOCK_INVALID && FD_ISSET(bl, &rs))
         {
             gc_u8  addr[6];
-            sock_t s = pcb_bt_accept(addr);
-            if (s != SOCK_INVALID) dev_accepted(s, addr, now);
+            sock_t s;
+            while ((s = pcb_bt_accept(addr)) != SOCK_INVALID) dev_accepted(s, addr, now);
         }
         if (tcp_l != SOCK_INVALID && FD_ISSET(tcp_l, &rs))
         {
@@ -862,6 +1043,7 @@ int main(int argc, char **argv)
             if (!p) continue;
 
             /* N-Gage side */
+            if (p->com_name[0]) com_service(p, now);
             if (p->dev_fd != SOCK_INVALID && FD_ISSET(p->dev_fd, &rs))
             {
                 gc_u8 buf[4096];
@@ -901,7 +1083,7 @@ int main(int argc, char **argv)
             if (p->dev_error) dev_lost(p, now, "write error");
 
             /* forget an N-Gage that did not come back */
-            if (p->dev_fd == SOCK_INVALID && !p->br.dev_lost_pending &&
+            if (p->dev_fd == SOCK_INVALID && !p->com_name[0] && !p->br.dev_lost_pending &&
                 (gc_u32)(now - p->t_gone) > p->br.cfg.device_grace_ms + PCB_FREE_AFTER_MS)
             {
                 logmsg(2, "N-Gage %s removed", p->addr_str);

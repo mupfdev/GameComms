@@ -4,7 +4,8 @@
 
 Unmodified N-Gage games call GAMECOMMS.DLL as before. Instead of
 connecting to other N-Gages over Bluetooth, the replacement DLL connects
-to a bridge over Bluetooth serial (SPP): an ESP32 board or a Windows PC.
+to a bridge over Bluetooth serial (SPP): an ESP32 board or a computer
+(Linux or Windows).
 The bridge forwards the traffic over TCP to a server. The server matches players of the
 same game and forwards their data. Up to four devices (one host, three
 clients) can play together.
@@ -27,7 +28,7 @@ clients) can play together.
 | DLL adapter | C++ | `dll/symbian/` | Exports, Symbian objects, Bluetooth, timers, list UI |
 | Bridge engine | C89 | `firmware/src/bridge_core.c` | Forwarding between Bluetooth and TCP |
 | Bridge firmware | C++ (Arduino) | `firmware/src/main.cpp` | Hardware, Wi-Fi, settings, console, setup page |
-| PC bridge | C | `pcbridge/src/` | Windows Bluetooth (RFCOMM, service record, PIN), one bridge engine per N-Gage, LAN discovery |
+| PC bridge | C | `pcbridge/src/` | Bluetooth through BlueZ/D-Bus (Linux) or Winsock (Windows), one bridge engine per N-Gage, LAN discovery |
 | Server engine | C99 | `server/src/gcs_core.c` | Registration, sessions, routing |
 | Server program | C99 | `server/src/gcs_main.c` | Sockets, configuration, LAN discovery |
 

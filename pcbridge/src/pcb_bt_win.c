@@ -167,6 +167,10 @@ int pcb_bt_open(const pcb_bt_cfg *cfg, char *err, size_t errlen)
         pcb_bt_close();
         return -1;
     }
+    {
+        u_long one = 1; /* the bridge accepts until nothing is left */
+        ioctlsocket(g_listener, FIONBIO, &one);
+    }
 
     memset(&g_csa, 0, sizeof(g_csa));
     g_csa.LocalAddr.iSockaddrLength = sizeof(g_local);

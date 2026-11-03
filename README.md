@@ -7,15 +7,15 @@ N-Gage multiplayer games use it to connect up to four devices over
 Bluetooth. This project replaces it so that these games can play over
 Wi-Fi and the Internet, without changes to the games.
 
-The N-Gage talks Bluetooth to a bridge: either an ESP32 board or a
-Windows PC with Bluetooth. The bridge connects to a server, which matches
+The N-Gage talks Bluetooth to a bridge: an ESP32 board or a computer with
+Bluetooth (Linux, for example a Raspberry Pi; Windows with limitations). The bridge connects to a server, which matches
 players of the same game and forwards their data.
 
 ## Contents
 
 - `dll/` - replacement GAMECOMMS.DLL for all 11 original variants
 - `firmware/` - ESP32 bridge firmware
-- `pcbridge/` - PC bridge for Windows (`gcbridge.exe`), same job as the ESP32
+- `pcbridge/` - PC bridge for Linux and Windows (`gcbridge`), same job as the ESP32
 - `server/` - endpoint server (`gamecommsd`)
 - `protocol/` - protocol library shared by all three parts
 - `tests/` - automated tests
@@ -35,8 +35,10 @@ players of the same game and forwards their data.
 1. Server: build and run `gamecommsd` on a PC in your network
    (see docs/BUILD.md).
 2. Bridge, one of:
-   - Windows PC with Bluetooth: start `gcbridge.exe`. One PC can serve
-     several N-Gages.
+   - Linux computer with Bluetooth, for example a Raspberry Pi: build and
+     start `gcbridge`. One computer can serve several N-Gages.
+   - Windows PC: `gcbridge.exe` works the same way, but depends on the
+     Bluetooth adapter and may not work (see docs/BUILD.md).
    - ESP32: flash it with `pio run -d firmware -t upload`, connect to its
      `GameCommsBridge-Setup` Wi-Fi and enter your Wi-Fi settings. One
      ESP32 per N-Gage.
@@ -106,9 +108,10 @@ cannot be mixed. Other combinations are not tested.
 - Protocol, server, bridge and DLL logic: implemented and covered by
   automated tests.
 - ESP32 firmware: implemented, built in CI.
-- PC bridge: implemented, tested with simulated devices over TCP and built
-  for Windows in CI. The Bluetooth part still has to be tested with a real
-  N-Gage.
+- PC bridge: implemented and tested with simulated devices (Linux: against
+  a simulated BlueZ). Linux still has to be tested with a real N-Gage. On
+  Windows the first real test failed inside the Windows Bluetooth stack
+  (see docs/BUILD.md, "Windows: known problem").
 - Symbian DLLs: implemented. They need the Windows N-Gage toolchain to
   build and still have to be tested on real hardware.
 

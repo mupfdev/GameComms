@@ -68,9 +68,14 @@ add_executable(gcsim ${ROOT}/tests/net/gcsim.c)
 target_link_libraries(gcsim gc_dev_core gc_bridge_core)
 # PC bridge (without Bluetooth outside Windows; tested with TCP devices)
 if(WIN32)
-    add_executable(gcbridge ${ROOT}/pcbridge/src/pcb_main.c ${ROOT}/pcbridge/src/pcb_bt_win.c)
+    add_executable(gcbridge ${ROOT}/pcbridge/src/pcb_main.c ${ROOT}/pcbridge/src/pcb_bt_win.c
+                   ${ROOT}/pcbridge/src/pcb_com_win.c)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_executable(gcbridge ${ROOT}/pcbridge/src/pcb_main.c ${ROOT}/pcbridge/src/pcb_bt_linux.c
+                   ${ROOT}/pcbridge/src/pcb_com_posix.c)
 else()
-    add_executable(gcbridge ${ROOT}/pcbridge/src/pcb_main.c ${ROOT}/pcbridge/src/pcb_bt_none.c)
+    add_executable(gcbridge ${ROOT}/pcbridge/src/pcb_main.c ${ROOT}/pcbridge/src/pcb_bt_none.c
+                   ${ROOT}/pcbridge/src/pcb_com_posix.c)
 endif()
 target_include_directories(gcbridge PRIVATE ${ROOT}/pcbridge/src)
 target_link_libraries(gcbridge gc_bridge_core)
@@ -86,5 +91,11 @@ if(Python3_FOUND)
              $<TARGET_FILE:gamecommsd> $<TARGET_FILE:gcsim>)
     add_test(NAME pcbridge_network COMMAND ${Python3_EXECUTABLE} ${ROOT}/tests/net/run_pcbridge_test.py
              $<TARGET_FILE:gamecommsd> $<TARGET_FILE:gcbridge> $<TARGET_FILE:gcsim>)
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # BlueZ backend against a fake BlueZ on a private D-Bus daemon (skipped without dbus-daemon / python dbus)
+        add_test(NAME pcbridge_bluez COMMAND ${Python3_EXECUTABLE} ${ROOT}/tests/net/run_bluez_test.py
+                 $<TARGET_FILE:gamecommsd> $<TARGET_FILE:gcbridge> $<TARGET_FILE:gcsim>)
+        set_tests_properties(pcbridge_bluez PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
     add_test(NAME dll_variants COMMAND ${Python3_EXECUTABLE} ${ROOT}/tests/compat/check_variants.py)
 endif()

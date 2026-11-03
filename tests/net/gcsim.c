@@ -13,7 +13,10 @@
  *
  *    gcsim [--server=HOST] [--port=N] [--api=1|2] [--players=N]
  *          [--uid=0x...] [--messages=N] [--key=TEXT] [--verbose]
- *          [--bridge=HOST:PORT [--reconnect]]
+ *          [--bridge=HOST:PORT [--reconnect]] [--serial=PATH]
+ *
+ *  --serial=PATH (POSIX only, with --bridge): device 0 talks to the bridge
+ *  through a serial device instead of TCP (tests the bridge's COM mode).
  *
  *  Scenario: device 0 hosts, the others join, the game starts, the host
  *  broadcasts and every client answers; all payloads are verified.
@@ -22,6 +25,9 @@
  *
  *  SPDX-License-Identifier: MIT
  */
+#ifndef _WIN32
+#define _DEFAULT_SOURCE /* cfmakeraw() */
+#endif
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
@@ -35,6 +41,7 @@ typedef SOCKET sock_t;
 #include <netinet/tcp.h>
 #include <sys/select.h>
 #include <sys/socket.h>
+#include <termios.h>
 #include <unistd.h>
 typedef int sock_t;
 #define CLOSESOCK close
@@ -55,6 +62,7 @@ typedef struct
     sock_t  fd;
     int     want_connect;
     sock_t  dfd;          /* --bridge: TCP connection to the PC bridge */
+    int     serial;       /* dfd is a serial device: use read()/write() */
     unsigned short dport; /* its local port (identifies the device) */
     gc_u8   to_bridge[65536];
     size_t  n_to_bridge;
@@ -74,6 +82,7 @@ static int         port = 9888;
 static int         verbose = 0;
 static const char *bridge_host = NULL;
 static int         bridge_port = 0;
+static const char *serial_path = NULL;
 
 static gc_u32 now_ms(void)
 {
@@ -94,7 +103,12 @@ static void d_write(void *c, const gc_u8 *d, size_t n)
         size_t k = 0;
         while (k < n && v->dfd != (sock_t)-1)
         {
-            int r = (int)send(v->dfd, (const char *)d + k, (int)(n - k), 0);
+            int r;
+#ifndef _WIN32
+            if (v->serial) r = (int)write(v->dfd, d + k, n - k);
+            else
+#endif
+            r = (int)send(v->dfd, (const char *)d + k, (int)(n - k), 0);
             if (r <= 0) break;
             k += (size_t)r;
         }
@@ -228,9 +242,14 @@ static void pump(gc_u32 dur)
             if (v->dfd != (sock_t)-1 && FD_ISSET(v->dfd, &rs))
             {
                 gc_u8 buf[8192];
-                int   r = (int)recv(v->dfd, (char *)buf, sizeof(buf), 0);
+                int   r;
+#ifndef _WIN32
+                if (v->serial) r = (int)read(v->dfd, buf, sizeof(buf));
+                else
+#endif
+                r = (int)recv(v->dfd, (char *)buf, sizeof(buf), 0);
                 if (r > 0) gcd_transport_input(&v->dev, buf, (size_t)r, t);
-                else { CLOSESOCK(v->dfd); v->dfd = (sock_t)-1; gcd_transport_down(&v->dev, t); }
+                else if (!v->serial) { CLOSESOCK(v->dfd); v->dfd = (sock_t)-1; gcd_transport_down(&v->dev, t); }
             }
             if (v->n_to_bridge) { size_t n = v->n_to_bridge; v->n_to_bridge = 0; bridge_dev_input(&v->br, v->to_bridge, n, t); }
             if (v->n_to_dev) { size_t n = v->n_to_dev; v->n_to_dev = 0; gcd_transport_input(&v->dev, v->to_dev, n, t); }
@@ -288,6 +307,7 @@ int main(int argc, char **argv)
             bridge_port = atoi(c + 1);
         }
         else if (!strcmp(argv[i], "--reconnect")) reconnect = 1;
+        else if (!strncmp(argv[i], "--serial=", 9)) serial_path = argv[i] + 9;
         else { printf("usage: gcsim [--server=HOST] [--port=N] [--api=1|2] [--players=2..4] [--uid=0x..] [--messages=N] [--key=K] [--verbose] [--bridge=HOST:PORT [--reconnect]]\n"); return 2; }
     }
     if (N < 2 || N > MAXN) N = 4;
@@ -312,6 +332,18 @@ int main(int argc, char **argv)
         bio.dev_write = b_dev_write; bio.srv_write = b_srv_write; bio.srv_connect = b_srv_connect;
         bio.srv_disconnect = b_srv_disconnect; bio.log = b_log;
         bridge_init(&v->br, &bc, &bio, v);
+#ifndef _WIN32
+        if (bridge_host && serial_path && i == 0)
+        {
+            struct termios tio;
+            v->dfd = open(serial_path, O_RDWR | O_NOCTTY);
+            if (v->dfd < 0) { printf("FAIL: cannot open %s\n", serial_path); return 1; }
+            if (tcgetattr(v->dfd, &tio) == 0) { cfmakeraw(&tio); tcsetattr(v->dfd, TCSANOW, &tio); }
+            v->serial = 1;
+            gcd_transport_up(&v->dev, now_ms());
+            continue;
+        }
+#endif
         if (bridge_host)
         {
             v->dfd = tcp_connect_to(bridge_host, bridge_port, &v->dport);

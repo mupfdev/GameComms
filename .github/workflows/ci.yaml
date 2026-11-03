@@ -15,6 +15,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: D-Bus modules for the BlueZ test (system Python)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y dbus python3-dbus python3-gi
       - name: Configure
         run: cmake -S tests -B build/tests -DGC_SANITIZE=${{ matrix.os == 'ubuntu-latest' && 'ON' || 'OFF' }}
       - name: Build
@@ -44,6 +47,20 @@ jobs:
         with:
           name: firmware
           path: firmware/.pio/build/esp32dev/firmware.bin
+
+  pcbridge-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          cmake -S pcbridge -B build/pcbridge -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/pcbridge
+          mkdir -p dist && cp build/pcbridge/gcbridge pcbridge/gcbridge.ini dist/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gcbridge-linux-x86_64
+          path: dist/
 
   pcbridge-windows:
     runs-on: windows-latest

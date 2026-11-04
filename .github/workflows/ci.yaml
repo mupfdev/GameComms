@@ -116,7 +116,7 @@ jobs:
 
   # PC bridge, server (MSVC) and all GAMECOMMS.DLL variants (N-Gage SDK)
   # through the "all" preset, staged in out/build/all/dist/PhantomLink.
-  windows:
+  dlls:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6

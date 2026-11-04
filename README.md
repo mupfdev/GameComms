@@ -34,7 +34,7 @@ usable replacement for GameComms.
 The ultimate goal remains simple: bring online multiplayer back to the Nokia N-Gage,
 allowing players to enjoy existing multiplayer games regardless of physical distance.
 
-# Why PhantomLink?
+## Why PhantomLink?
 
 The name **PhantomLink** captures the idea of playing local multiplayer without being
 physically local. The _Phantom_ represents the invisible presence of players who are

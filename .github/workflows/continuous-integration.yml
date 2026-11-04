@@ -159,7 +159,7 @@ jobs:
           if-no-files-found: error
 
   package:
-    needs: [host-tests, server, firmware, windows]
+    needs: [host-tests, server, firmware, dlls]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

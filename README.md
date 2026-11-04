@@ -4,8 +4,6 @@
 
 [![Continuous Integration](https://github.com/ngagesdk/PhantomLink/actions/workflows/ci.yaml/badge.svg)](https://github.com/ngagesdk/PhantomLink/actions/workflows/ci.yaml)
 
-[![Co-created with AI](https://madebyhuman.iamjarl.com/badges/co-created-white.svg)](https://madebyhuman.iamjarl.com)
-
 PhantomLink aims to provide drop-in replacements for **GameComms**, the proprietary
 multiplayer communication library included in the Nokia N-Gage SDK.
 
@@ -193,6 +191,8 @@ cannot be mixed. Other combinations are not tested.
 ## License
 
 MIT, see [LICENSE.md](LICENSE.md).  
+
+[![Co-created with AI](https://madebyhuman.iamjarl.com/badges/co-created-white.svg)](https://madebyhuman.iamjarl.com)
 
 The files in `dll/symbian/bt/` are based on Nokia's Bluetooth example code.
 

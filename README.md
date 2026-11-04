@@ -48,7 +48,7 @@ distant players become phantoms in each other's local multiplayer sessions.
 To use PhantomLink and play Nokia N-Gage multiplayer games online, you need the
 following:
 
-1. A Nokia N-Gage game
+### 1. A Nokia N-Gage game
 
 - You need a copy of the game with copy protection removed, as PhantomLink replaces
   the original `GAMECOMMS.DLL`.
@@ -59,7 +59,7 @@ following:
 - Naturally, we encourage you to use your own legally purchased games and create your
   own game copies for use with PhantomLink.
 
-2. A Bluetooth bridge device
+### 2. A Bluetooth bridge device
 
 You need one of the following devices to connect your N-Gage to PhantomLink:
 
@@ -71,12 +71,12 @@ You need one of the following devices to connect your N-Gage to PhantomLink:
 
 - A Windows PC with Bluetooth support (some limitations apply).
 
-3. An Internet connection
+### 3. An Internet connection
 
 - The bridge device needs Internet access to communicate with the PhantomLink server.
 - All players must connect to the same server to find each other and play together.
 
-4. A Nokia N-Gage device
+### 4. A Nokia N-Gage device
 
 - Obviously, you need a working Nokia N-Gage (Classic or QD) capable of running the
   game you want to play.

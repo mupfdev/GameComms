@@ -11,9 +11,9 @@ env:
   # ngage-toolchain commit used for the N-Gage DLLs (pinned for reproducible builds)
   NGAGE_TOOLCHAIN_REF: 9ebd8741ce66a2fbb0f703d99c207c3303965074
   # tag of the rolling CI release
-  CI_RELEASE_TAG: continuous
+  CI_RELEASE_TAG: continuous-integration
 
-jobs:
+jobs:   
   host-tests:
     strategy:
       matrix:
@@ -235,7 +235,7 @@ jobs:
         with:
           tag_name: ${{ env.CI_RELEASE_TAG }}
           target_commitish: ${{ github.sha }}
-          name: PhantomLink Continuous Integration Build
+          name: Continuous Integration
           body: |
             **Continuous Integration (CI) release** - built automatically from the latest commit on `main`; not an official, hardware-tested release.
 

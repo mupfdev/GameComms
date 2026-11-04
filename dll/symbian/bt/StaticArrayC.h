@@ -3,6 +3,8 @@
 #ifndef __STATIC_ARRAY_C_H__
 #define __STATIC_ARRAY_C_H__
 
+#include <e32std.h>
+
 /*!
   @class TStaticArrayC
 

@@ -145,23 +145,26 @@ static void try_flush(net_conn *c)
 static void io_write(void *ctx, gcs_conn *conn, const gc_u8 *data, size_t len)
 {
     net_conn *c = (net_conn *)conn;
+    size_t needed;
     (void)ctx;
-    if (c->closing) {
+    if (c->closing || len == 0) {
         return;
     }
-    if (c->out_len + len > c->out_cap) {
+    if (!data || c->out_len > OUTBUF_MAX || len > OUTBUF_MAX - c->out_len) {
+        logmsg(1, "%s: output buffer limit exceeded, closing", c->addr);
+        c->closing = 1;
+        return;
+    }
+    needed = c->out_len + len;
+    if (needed > c->out_cap) {
         size_t cap = c->out_cap ? c->out_cap : 4096;
         gc_u8 *n;
-        while (cap < c->out_len + len) {
-            cap *= 2;
-        }
-        if (cap > OUTBUF_MAX) {
-            logmsg(1, "%s: output buffer overflow, closing", c->addr);
-            c->closing = 1;
-            return;
+        while (cap < needed) {
+            cap = cap > OUTBUF_MAX / 2 ? OUTBUF_MAX : cap * 2;
         }
         n = (gc_u8 *)realloc(c->out, cap);
         if (!n) {
+            logmsg(1, "%s: cannot allocate output buffer, closing", c->addr);
             c->closing = 1;
             return;
         }
@@ -169,7 +172,7 @@ static void io_write(void *ctx, gcs_conn *conn, const gc_u8 *data, size_t len)
         c->out_cap = cap;
     }
     memcpy(c->out + c->out_len, data, len);
-    c->out_len += len;
+    c->out_len = needed;
     try_flush(c);
 }
 
@@ -216,6 +219,9 @@ static sock_t open_listener(const char *bind_addr, int port, int type)
     if (!ai) {
         ai = res;
     }
+    if (!ai) {
+        return SOCK_INVALID;
+    }
     s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
     if (s != SOCK_INVALID) {
         setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char *)&one, sizeof(one));
@@ -241,6 +247,11 @@ static void accept_new(sock_t lfd, gc_u32 now)
         if (fd == SOCK_INVALID) {
             return;
         }
+        if (set_nonblocking(fd) != 0) {
+            logmsg(1, "cannot set accepted socket nonblocking");
+            sock_close(fd);
+            continue;
+        }
         for (i = 0; i < MAX_CONNS; i++) {
             if (!g_conns[i].used) {
                 c = &g_conns[i];
@@ -252,7 +263,6 @@ static void accept_new(sock_t lfd, gc_u32 now)
             sock_close(fd);
             continue;
         }
-        set_nonblocking(fd);
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof(one));
         setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (const char *)&one, sizeof(one));
         memset(c, 0, sizeof(*c));
@@ -300,6 +310,7 @@ static void on_signal(int sig)
 typedef struct
 {
     char bind_addr[64];
+    int allow_plaintext_network;
     int port;
     int discovery;
     gcs_config core;
@@ -323,6 +334,8 @@ static int set_option(app_cfg *a, const char *key, const char *val)
 {
     if (!strcmp(key, "bind")) {
         snprintf(a->bind_addr, sizeof(a->bind_addr), "%s", val);
+    } else if (!strcmp(key, "allow_plaintext_network")) {
+        a->allow_plaintext_network = atoi(val) != 0;
     } else if (!strcmp(key, "port")) {
         a->port = atoi(val);
     } else if (!strcmp(key, "discovery")) {
@@ -393,7 +406,9 @@ static void usage(const char *argv0)
            "usage: %s [-c file] [--key=value ...]\n\n"
            "  -c FILE              read options from FILE (key = value)\n"
            "  --port=N             TCP port (default %d)\n"
-           "  --bind=ADDR          bind address (default all)\n"
+           "  --bind=ADDR          bind address (default 127.0.0.1)\n"
+           "  --allow_plaintext_network=1\n"
+           "                       allow non-loopback bind; requires access_key and a secured network\n"
            "  --discovery=0|1      answer LAN discovery on UDP port (default 1)\n"
            "  --name=TEXT          server name shown to devices\n"
            "  --access_key=TEXT    require this key from bridges (default none)\n"
@@ -418,6 +433,7 @@ int main(int argc, char *argv[])
 #endif
 
     memset(&a, 0, sizeof(a));
+    snprintf(a.bind_addr, sizeof(a.bind_addr), "%s", "127.0.0.1");
     a.port = GCS_DEFAULT_PORT;
     a.discovery = 1;
     a.status_interval = 300;
@@ -443,6 +459,20 @@ int main(int argc, char *argv[])
             usage(argv[0]);
             return 2;
         }
+    }
+    if (strcmp(a.bind_addr, "127.0.0.1") != 0 && strcmp(a.bind_addr, "::1") != 0) {
+        if (!a.allow_plaintext_network) {
+            fprintf(stderr,
+                    "refusing non-loopback bind '%s': TCP is unencrypted; use a secured tunnel or explicitly set "
+                    "allow_plaintext_network=1 on a secured network\n",
+                    a.bind_addr);
+            return 2;
+        }
+        if (!a.core.access_key[0]) {
+            fprintf(stderr, "refusing non-loopback bind '%s' without an access_key\n", a.bind_addr);
+            return 2;
+        }
+        fprintf(stderr, "WARNING: non-loopback TCP is unencrypted; restrict it to a secured tunnel/VPN interface\n");
     }
     g_log_level = a.core.log_level;
     if (a.logfile[0]) {
@@ -520,6 +550,10 @@ int main(int argc, char *argv[])
                     continue;
                 }
                 if (!c || !c->used) {
+                    continue;
+                }
+                if (pfd[i].revents & POLLNVAL) {
+                    c->closing = 1;
                     continue;
                 }
                 if (pfd[i].revents & POLLOUT) {

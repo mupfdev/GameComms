@@ -1,5 +1,5 @@
 # docker build -t gamecommsd -f server/Dockerfile .
-# docker run -d --name gamecommsd -p 9888:9888/tcp -p 9888:9888/udp gamecommsd
+# For remote access, provide a VPN-bound config; see docs/BUILD.md.
 FROM debian:bookworm-slim AS build
 RUN apt-get update && apt-get install -y --no-install-recommends cmake gcc make libc6-dev && rm -rf /var/lib/apt/lists/*
 COPY protocol /src/protocol

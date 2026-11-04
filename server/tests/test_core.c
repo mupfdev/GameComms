@@ -656,6 +656,7 @@ static void test_duplicate_device_registration(void)
 {
     gc_u32 sid;
     gc_msg *r;
+    gc_msg m;
     reset_world();
     new_client(0, "host");
     do_register(0, GC_API_V2);
@@ -663,9 +664,13 @@ static void test_duplicate_device_registration(void)
     do_register(1, GC_API_V2);
     sid = host_open(0, 0xBB, GC_API_V2, 4, 0);
     join(1, sid, 0xBB, GC_API_V2, 0);
-    memset(&C[1].link, 0, 0);
-    /* the same N-Gage comes back through a rebooted bridge (new link id) */
-    C[5] = C[1]; /* copy device identity */
+    memset(&m, 0, sizeof(m));
+    m.type = GC_MT_SESSION_STATE;
+    m.u.session_state.state = GC_SS_PLAYING;
+    send_msg(&C[0], &m);
+    pump(3);
+    /* A duplicate identity must not evict the original peer or take its slot. */
+    C[5] = C[1]; /* Copy the device identity. */
     {
         gc_link_cfg cfg;
         gc_link_ops ops;
@@ -682,8 +687,38 @@ static void test_duplicate_device_registration(void)
         connect_client(c);
     }
     do_register(5, GC_API_V2);
+    r = find(&C[5], GC_MT_REGISTERED);
+    CHECK(r && r->u.registered.result == GC_R_REJECTED);
+    CHECK(C[1].open);
+    CHECK_EQ(count(&C[1], GC_MT_SESSION_ENDED), 0);
+
+    /* After link expiry, a new peer may not reclaim the reserved slot by ID. */
+    disconnect_client(&C[1]);
+    pump(501);
+    do_register(5, GC_API_V2);
+    r = find(&C[5], GC_MT_REGISTERED);
+    CHECK(r && r->u.registered.result == GC_R_OK);
     r = join(5, sid, 0xBB, GC_API_V2, 1);
-    CHECK(r && r->u.join_result.result == GC_R_OK && r->u.join_result.slot == 1);
+    CHECK(r && r->u.join_result.result == GC_R_CLOSED);
+}
+
+static void test_connection_refused_when_peer_limit_reached(void)
+{
+    gcs_config cfg;
+    gcs_io io;
+    if (core) {
+        gcs_core_destroy(core);
+    }
+    gcs_default_config(&cfg);
+    cfg.max_peers = 0;
+    io.write = io_write;
+    io.close = io_close;
+    io.log = io_log;
+    core = gcs_core_create(&cfg, &io, NULL, 42);
+    memset(C, 0, sizeof(C));
+    new_client(0, "refused");
+    CHECK_EQ(C[0].open, 0);
+    CHECK_EQ(C[0].close_req, 0);
 }
 
 static void test_malformed_input(void)
@@ -720,6 +755,7 @@ int main(void)
     RUN(test_reservation_expiry);
     RUN(test_kick_and_host_close);
     RUN(test_duplicate_device_registration);
+    RUN(test_connection_refused_when_peer_limit_reached);
     RUN(test_malformed_input);
     gcs_core_destroy(core);
     TEST_MAIN_END();

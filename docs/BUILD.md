@@ -325,9 +325,17 @@ sudo systemctl enable --now gamecommsd
 
 ### Docker
 
+The bundled config binds to container loopback. For remote bridge connections,
+provide a config that binds to a VPN/tunnel interface, set
+`allow_plaintext_network = 1`, and keep the container reachable only through
+that secured network. Do not publish the plaintext port directly to the
+Internet.
+
 ```sh
 docker build -t gamecommsd -f server/Dockerfile .
-docker run -d --name gamecommsd -p 9888:9888/tcp -p 9888:9888/udp gamecommsd
+# Run with a secured overlay network and a config bound to its interface.
+docker run -d --name gamecommsd --network your-secured-overlay \
+-v /path/to/gamecommsd.conf:/etc/gamecommsd.conf:ro gamecommsd
 ```
 
 ### Windows
@@ -339,11 +347,15 @@ cmake --build build\server --config Release
 
 ### Local network or Internet
 
-- Local network: run the server on any PC in the same network and keep
-  `host auto` on the bridges.
-- Internet: run the server on a public host, open TCP port 9888, set the
-  server's host name on every bridge, and set the same access key on the
-  server (`access_key`) and the bridges (`key`).
+The server listens on `127.0.0.1` by default. To accept remote connections,
+set `bind` to a specific private/VPN interface address, configure a non-empty
+`access_key`, and explicitly set `allow_plaintext_network = 1`. Use only a
+trusted VPN or secured tunnel between every bridge and the server; do not bind
+to a public interface or expose TCP port 9888 directly to untrusted networks.
+The protocol is still unencrypted TCP and the shared access key is sent in
+cleartext; the opt-in and key requirement reduce accidental exposure but are
+not substitutes for transport security.
+server address routes through that secured network.
 
 To test a server without hardware:
 

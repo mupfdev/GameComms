@@ -52,7 +52,13 @@ The receiver:
 ## 2 Link layer (GCL)
 
 Each connection runs one link. The N-Gage connects to the bridge, the
-bridge connects to the server.
+bridge connects to the server. The server link uses plain TCP: CRC detects
+accidental corruption but does not encrypt or authenticate traffic. The
+optional shared access key is visible to anyone able to observe the TCP
+connection. Use a trusted network or a separately secured tunnel; do not
+expose this protocol directly to an untrusted network as a confidential or
+tamper-resistant channel. The server defaults to loopback and requires an
+explicit opt-in for non-loopback listeners.
 
 ### 2.1 Frame body
 
@@ -184,7 +190,10 @@ accepts them), 0x02 HIDDEN (not shown in host lists). The DLL handles
 confirmation itself and does not use the CONFIRM flag.
 
 Only sessions in the lobby accept new players. Sessions that are playing
-or paused only accept devices that rejoin into their reserved slot.
+or paused only accept the original live server peer rejoining into its
+reserved slot. A matching device ID alone is not sufficient proof of
+ownership; after a bridge TCP link drop, the old peer must resume within the
+link grace period or the slot remains reserved until expiration.
 
 ### 3.3 Finding and joining a session
 
@@ -192,7 +201,7 @@ or paused only accept devices that rejoin into their reserved slot.
 |---|---|---|---|
 | 0x30 | DISCOVER | dev to srv | game uid (4), api (1) |
 | 0x31 | SESSION_LIST | srv to dev | count (1, at most 12), more (1), then per session: session id (4), players (1), max players (1), state (1), host name (str) |
-| 0x32 | JOIN | dev to srv | session id (4, 0 = first open session), game uid (4), api (1), rejoin (1) |
+| 0x32 | JOIN | dev to srv | session id (4, 0 = first open session), game uid (4), api (1), rejoin (1; reserved-slot lookup hint only) |
 | 0x33 | JOIN_RESULT | srv to dev | result (1), session id (4), slot (1), max players (1), host name (str) |
 | 0x34 | LEAVE | dev to srv | reason (1): 0 leave, 1 temporary (keep the slot) |
 | 0x35 | SESSION_ENDED | srv to client | reason (1) |
@@ -203,8 +212,9 @@ or paused only accept devices that rejoin into their reserved slot.
   INCOMPATIBLE.
 - The server assigns slots: the host is 0, clients get the lowest free
   slot from 1 to 3. The slot is the client id the game sees.
-- A device that rejoins (same device id) gets its old slot back, even if
-  the session no longer accepts new players.
+- A temporarily disconnected device can reclaim its reserved slot through
+  the same live server peer, even if the session no longer accepts new
+  players. A new peer with the same device ID cannot reclaim the slot.
 
 ### 3.4 Game data
 

@@ -14,10 +14,16 @@ void gc_memmove(void *dst, const void *src, size_t n)
 {
     unsigned char *d = (unsigned char *)dst;
     const unsigned char *s = (const unsigned char *)src;
-    if (d == s || n == 0) {
+    size_t dst_addr, src_addr;
+
+    if (n == 0 || dst == src) {
         return;
     }
-    if (d < s) {
+    /* The supported flat-address targets use pointer-sized size_t. Avoid
+     * relational comparisons between pointers to unrelated objects. */
+    dst_addr = (size_t)dst;
+    src_addr = (size_t)src;
+    if (dst_addr < src_addr || dst_addr - src_addr >= n) {
         while (n--) {
             *d++ = *s++;
         }
@@ -68,7 +74,7 @@ size_t gc_cobs_encode(const gc_u8 *in, size_t len, gc_u8 *out, size_t out_cap)
     size_t code_pos = 0;
     gc_u8 code = 1;
 
-    if (out_cap < GC_COBS_MAX_ENCODED(len)) {
+    if ((len && !in) || !out || out_cap < GC_COBS_MAX_ENCODED(len)) {
         return 0;
     }
 
@@ -99,6 +105,9 @@ size_t gc_cobs_decode(const gc_u8 *in, size_t len, gc_u8 *out, size_t out_cap)
     gc_u8 code;
     gc_u8 i;
 
+    if ((len && !in) || !out) {
+        return GC_COBS_ERROR;
+    }
     while (read < len) {
         code = in[read];
         /* zero is never valid inside an encoded block; a code that
@@ -130,14 +139,14 @@ size_t gc_cobs_decode(const gc_u8 *in, size_t len, gc_u8 *out, size_t out_cap)
 void gc_w_init(gc_writer *w, gc_u8 *buf, size_t cap)
 {
     w->data = buf;
-    w->cap = cap;
+    w->cap = buf ? cap : 0;
     w->len = 0;
-    w->overflow = 0;
+    w->overflow = buf == NULL && cap != 0;
 }
 
 void gc_w_u8(gc_writer *w, gc_u8 v)
 {
-    if (w->len + 1 > w->cap) {
+    if (w->len >= w->cap) {
         w->overflow = 1;
         return;
     }
@@ -161,7 +170,7 @@ void gc_w_bytes(gc_writer *w, const gc_u8 *p, size_t n)
     if (n == 0) {
         return;
     }
-    if (w->len + n > w->cap) {
+    if (!p || w->len > w->cap || n > w->cap - w->len) {
         w->overflow = 1;
         return;
     }
@@ -184,14 +193,14 @@ void gc_w_str8(gc_writer *w, const char *s, size_t len)
 void gc_r_init(gc_reader *r, const gc_u8 *buf, size_t len)
 {
     r->data = buf;
-    r->len = len;
+    r->len = buf ? len : 0;
     r->pos = 0;
-    r->error = 0;
+    r->error = buf == NULL && len != 0;
 }
 
 gc_u8 gc_r_u8(gc_reader *r)
 {
-    if (r->pos + 1 > r->len) {
+    if (r->pos >= r->len) {
         r->error = 1;
         r->pos = r->len;
         return 0;
@@ -217,22 +226,28 @@ const gc_u8 *gc_r_bytes(gc_reader *r, size_t n)
 {
     const gc_u8 *p;
 
-    if (r->pos + n > r->len) {
+    if (r->pos > r->len || n > r->len - r->pos) {
         r->error = 1;
         r->pos = r->len;
         return NULL;
     }
-    p = r->data + r->pos;
+    p = r->data ? r->data + r->pos : NULL;
     r->pos += n;
     return p;
 }
 
 size_t gc_r_str8(gc_reader *r, char *out, size_t out_cap)
 {
-    size_t n = gc_r_u8(r);
-    const gc_u8 *p = gc_r_bytes(r, n);
-    size_t copy = n;
+    size_t n, copy;
+    const gc_u8 *p;
 
+    if (!out && out_cap) {
+        r->error = 1;
+        return 0;
+    }
+    n = gc_r_u8(r);
+    p = gc_r_bytes(r, n);
+    copy = n;
     if (out_cap == 0) {
         return 0;
     }
@@ -250,7 +265,7 @@ size_t gc_r_str8(gc_reader *r, char *out, size_t out_cap)
 
 size_t gc_r_remaining(const gc_reader *r)
 {
-    return r->len - r->pos;
+    return r->pos <= r->len ? r->len - r->pos : 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -303,6 +318,9 @@ void gc_deframer_feed(gc_deframer *d, const gc_u8 *data, size_t len)
 {
     size_t i;
 
+    if (!d || (len && !data)) {
+        return;
+    }
     for (i = 0; i < len; i++) {
         gc_u8 c = data[i];
 
@@ -377,7 +395,8 @@ size_t gc_frame_encode(const gc_u8 *body, size_t len, gc_u8 *out, size_t out_cap
     gc_u16 crc;
     size_t i;
 
-    if (len > GC_FRAME_MAX_BODY || out_cap < GC_COBS_MAX_ENCODED(len + 2) + 2) {
+    if ((len && !body) || !out || len > GC_FRAME_MAX_BODY ||
+        out_cap < GC_COBS_MAX_ENCODED(len + 2) + 2) {
         return 0;
     }
     out[0] = 0;

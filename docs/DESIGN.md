@@ -74,9 +74,11 @@ pause or continue.
   join in the lobby.
 - A slot is empty, pending (waiting for the host's confirmation), active
   or reserved.
-- A slot is reserved when its player is lost or leaves temporarily. The
-  same device can rejoin into it, also while playing. The reservation
-  expires after a timeout.
+- A slot is reserved when its player is lost or leaves temporarily. Only
+  the same live server peer can reclaim it, including while playing; a new
+  peer cannot claim it by copying the public device ID. After a bridge TCP
+  link drop, the old peer must resume within the link grace period to reclaim
+  its slot. Otherwise the reservation expires after a timeout.
 - If the host leaves or is lost, the session ends for all clients.
 
 ### DLL, GameComms 1.x

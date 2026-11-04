@@ -24,7 +24,7 @@ static size_t gc_strnlen(const char *s, size_t max)
 
 size_t gc_msg_encode_data(gc_u8 addr, gc_u8 channel, const gc_u8 *payload, size_t len, gc_u8 *buf, size_t cap)
 {
-    if (len > GC_MAX_DATA || cap < len + 3) {
+    if ((len && !payload) || !buf || len > GC_MAX_DATA || cap < len + 3) {
         return 0;
     }
     buf[0] = GC_MT_DATA;
@@ -41,6 +41,9 @@ size_t gc_msg_encode(const gc_msg *m, gc_u8 *buf, size_t cap)
     gc_writer w;
     int i;
 
+    if (!m || !buf) {
+        return 0;
+    }
     if (m->type == GC_MT_DATA) {
         return gc_msg_encode_data(m->u.data.addr, m->u.data.channel, m->u.data.payload, m->u.data.len, buf, cap);
     }
@@ -157,7 +160,7 @@ int gc_msg_decode(const gc_u8 *buf, size_t len, gc_msg *m)
     int i;
     const gc_u8 *p;
 
-    if (len < 1) {
+    if (!buf || !m || len < 1) {
         return 0;
     }
     memset(m, 0, sizeof(*m));

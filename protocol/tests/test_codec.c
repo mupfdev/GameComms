@@ -99,6 +99,24 @@ static void test_rw(void)
     gc_w_init(&w, buf, 3);
     gc_w_u32(&w, 1);
     CHECK(w.overflow);
+    gc_w_init(&w, buf, sizeof(buf));
+    w.len = (size_t)-1;
+    gc_w_bytes(&w, buf, 1);
+    CHECK(w.overflow);
+    gc_r_init(&r, buf, sizeof(buf));
+    r.pos = (size_t)-1;
+    CHECK_EQ(gc_r_remaining(&r), 0);
+    CHECK(gc_r_bytes(&r, 1) == NULL);
+    CHECK(r.error);
+}
+
+static void test_memmove_overlap(void)
+{
+    char buf[8] = "abcdef";
+    gc_memmove(buf + 1, buf, 5);
+    CHECK(memcmp(buf, "aabcde", 6) == 0);
+    gc_memmove(buf, buf + 1, 5);
+    CHECK(memcmp(buf, "abcdee", 6) == 0);
 }
 
 typedef struct
@@ -213,6 +231,7 @@ static void test_framer_fuzz(void)
 int main(void)
 {
     RUN(test_crc);
+    RUN(test_memmove_overlap);
     RUN(test_cobs_vectors);
     RUN(test_cobs_long_runs);
     RUN(test_cobs_malformed);

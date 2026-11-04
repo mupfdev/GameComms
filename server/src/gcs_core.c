@@ -23,6 +23,7 @@ typedef struct
 {
     int state;
     gcs_peer *peer;
+    gcs_peer *reserved_owner;
     gc_u8 device_id[GC_DEVICE_ID_LEN];
     char name[GC_MAX_NAME + 1];
     gc_u32 t; /* pending since / reserved since */
@@ -383,6 +384,7 @@ static void session_leave(gcs_core *core, gcs_peer *p, gc_u8 reason, int reserve
     if (reserve && s->state != GC_SS_LOBBY) {
         mb->state = M_RESERVED;
         mb->peer = NULL;
+        mb->reserved_owner = p;
         mb->t = core->now;
         LOG_I("session %08x: slot %u ('%s') reserved for rejoin", s->id, p->slot, mb->name);
     } else {
@@ -471,6 +473,16 @@ static void peer_kill(gcs_peer *p, int reason)
     }
     p->dead = 1;
     session_leave(core, p, (gc_u8)reason, reason != GC_LEFT_LEAVE);
+    {
+        int i, k;
+        for (i = 0; i < core->n_sessions; i++) {
+            for (k = 1; k < GC_MAX_PLAYERS; k++) {
+                if (core->sessions[i]->m[k].reserved_owner == p) {
+                    core->sessions[i]->m[k].reserved_owner = NULL;
+                }
+            }
+        }
+    }
     if (p->conn) {
         gcs_conn *c = p->conn;
         p->conn = NULL;
@@ -592,13 +604,15 @@ static void h_register(gcs_peer *p, const gc_msg *m)
         peer_send(p, &r);
         return;
     }
-    if (p->registered && p->session) {
-        session_leave(core, p, GC_LEFT_LEAVE, 0);
-    }
     old = peer_by_device(core, m->u.reg.device_id, p);
     if (old) {
-        LOG_I("device '%s' re-registered, dropping stale peer %u", m->u.reg.name, old->peer_id);
-        peer_kill(old, GC_LEFT_LOST);
+        LOG_W("registration of '%s' rejected: device ID is already registered", m->u.reg.name);
+        r.u.registered.result = GC_R_REJECTED;
+        peer_send(p, &r);
+        return;
+    }
+    if (p->registered && p->session) {
+        session_leave(core, p, GC_LEFT_LEAVE, 0);
     }
     p->registered = 1;
     if (!p->peer_id) {
@@ -754,7 +768,7 @@ static void h_join(gcs_peer *p, const gc_msg *m)
     if (m->u.join.session_id == 0) {
         s = find_open_session(core, m->u.join.game_uid, api, p);
         if (!s && m->u.join.rejoin) {
-            /* rejoin without id: find a reserved slot for this device */
+            /* only the same live peer may locate its reserved slot */
             for (i = 0; i < core->n_sessions && !s; i++) {
                 int k;
                 gcs_session *c = core->sessions[i];
@@ -762,8 +776,7 @@ static void h_join(gcs_peer *p, const gc_msg *m)
                     continue;
                 }
                 for (k = 1; k < GC_MAX_PLAYERS; k++) {
-                    if (c->m[k].state == M_RESERVED &&
-                        memcmp(c->m[k].device_id, p->device_id, GC_DEVICE_ID_LEN) == 0) {
+                    if (c->m[k].state == M_RESERVED && c->m[k].reserved_owner == p) {
                         s = c;
                     }
                 }
@@ -788,26 +801,20 @@ static void h_join(gcs_peer *p, const gc_msg *m)
         return;
     }
 
-    /* rejoin: same device already has (or had) a slot in this session */
-    if (!id_is_zero(p->device_id)) {
-        for (i = 1; i < GC_MAX_PLAYERS; i++) {
-            gcs_member *mb = &s->m[i];
-            if ((mb->state == M_RESERVED || mb->state == M_ACTIVE) &&
-                memcmp(mb->device_id, p->device_id, GC_DEVICE_ID_LEN) == 0) {
-                if (mb->state == M_ACTIVE && mb->peer && mb->peer != p) {
-                    mb->peer->session = NULL;
-                    send_reason(mb->peer, GC_MT_SESSION_ENDED, GC_LEFT_KICKED);
-                }
-                mb->state = M_ACTIVE;
-                mb->peer = p;
-                strcpy(mb->name, p->name);
-                p->session = s;
-                p->slot = (gc_u8)i;
-                LOG_I("session %08x: '%s' rejoined slot %d", s->id, p->name, i);
-                send_join_result(p, GC_R_OK, s, (gc_u8)i);
-                send_peer_joined(session_host(s), GC_MT_PEER_JOINED, (gc_u8)i, mb, 1);
-                return;
-            }
+    /* A device ID is public identity data, not proof of slot ownership. */
+    for (i = 1; i < GC_MAX_PLAYERS; i++) {
+        gcs_member *mb = &s->m[i];
+        if (mb->state == M_RESERVED && mb->reserved_owner == p) {
+            mb->state = M_ACTIVE;
+            mb->peer = p;
+            mb->reserved_owner = NULL;
+            strcpy(mb->name, p->name);
+            p->session = s;
+            p->slot = (gc_u8)i;
+            LOG_I("session %08x: '%s' rejoined slot %d", s->id, p->name, i);
+            send_join_result(p, GC_R_OK, s, (gc_u8)i);
+            send_peer_joined(session_host(s), GC_MT_PEER_JOINED, (gc_u8)i, mb, 1);
+            return;
         }
     }
 
@@ -830,6 +837,7 @@ static void h_join(gcs_peer *p, const gc_msg *m)
         return;
     }
     s->m[slot].peer = p;
+    s->m[slot].reserved_owner = NULL;
     memcpy(s->m[slot].device_id, p->device_id, GC_DEVICE_ID_LEN);
     strcpy(s->m[slot].name, p->name);
     s->m[slot].t = core->now;
@@ -1094,6 +1102,13 @@ void gcs_core_conn_open(gcs_core *core, gcs_conn *conn, gc_u32 now)
         return;
     }
     conn->peer = peer_new(core, conn);
+    if (!conn->peer) {
+        LOG_W("cannot allocate peer state, refusing connection");
+        conn->peer = NULL;
+        if (core->io.close) {
+            core->io.close(core->io_ctx, conn);
+        }
+    }
 }
 
 void gcs_core_conn_input(gcs_core *core, gcs_conn *conn, const gc_u8 *data, size_t len, gc_u32 now)

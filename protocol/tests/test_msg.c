@@ -123,6 +123,10 @@ static void test_malformed(void)
     CHECK(!gc_msg_decode(b3, sizeof(b3), &m));
     CHECK(!gc_msg_decode(b4, sizeof(b4), &m));
     CHECK(!gc_msg_decode(b1, 0, &m));
+    CHECK(!gc_msg_decode(NULL, 1, &m));
+    CHECK(!gc_msg_decode(b1, sizeof(b1), NULL));
+    CHECK_EQ(gc_msg_encode(NULL, b1, sizeof(b1)), 0);
+    CHECK_EQ(gc_msg_encode_data(0, 0, NULL, 1, b1, sizeof(b1)), 0);
 }
 
 static void test_fuzz(void)

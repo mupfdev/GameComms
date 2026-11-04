@@ -13,10 +13,10 @@
 #ifndef GCPLATFORM_H
 #define GCPLATFORM_H
 
+#include <bt_sock.h>
 #include <e32base.h>
 #include <e32std.h>
 #include <es_sock.h>
-#include <bt_sock.h>
 
 extern "C" {
 #include "gc_dev.h"
@@ -30,19 +30,19 @@ extern "C" {
 /* ------------------------------------------------------------------ */
 class MGameBTCommsNotify
 {
-public:
-    virtual void ClientConnected(TUint16 aClientId, TDesC& aClientName, TInt aError) = 0;  /* +0x08 */
-    virtual void HostSelected(TInt aError) = 0;                                             /* +0x0c */
-    virtual void HostConnected(TInt aError) = 0;                                            /* +0x10 */
-    virtual void StartMultiPlayerGame(TInt aError) = 0;                                     /* +0x14 */
-    virtual void ContinueMultiPlayerGame() = 0;                                             /* +0x18 */
-    virtual void PauseMultiPlayerGame() = 0;                                                /* +0x1c */
-    virtual void EndMultiPlayerGame(TInt aReason) = 0;                                      /* +0x20 */
-    virtual void ConnectedClientEndedGame(TUint16 aClientId) = 0;                           /* +0x24 */
-    virtual void ClientDisconnected(TUint16 aClientId, TInt aError) = 0;                    /* +0x28 */
-    virtual void HostDisconnected(TInt aError) = 0;                                         /* +0x2c */
-    virtual void ReceiveDataFromClient(TUint16 aClientId, TDesC8& aData) = 0;               /* +0x30 */
-    virtual void ReceiveDataFromHost(TDesC8& aData) = 0;                                    /* +0x34 */
+  public:
+    virtual void ClientConnected(TUint16 aClientId, TDesC &aClientName, TInt aError) = 0; /* +0x08 */
+    virtual void HostSelected(TInt aError) = 0;                                           /* +0x0c */
+    virtual void HostConnected(TInt aError) = 0;                                          /* +0x10 */
+    virtual void StartMultiPlayerGame(TInt aError) = 0;                                   /* +0x14 */
+    virtual void ContinueMultiPlayerGame() = 0;                                           /* +0x18 */
+    virtual void PauseMultiPlayerGame() = 0;                                              /* +0x1c */
+    virtual void EndMultiPlayerGame(TInt aReason) = 0;                                    /* +0x20 */
+    virtual void ConnectedClientEndedGame(TUint16 aClientId) = 0;                         /* +0x24 */
+    virtual void ClientDisconnected(TUint16 aClientId, TInt aError) = 0;                  /* +0x28 */
+    virtual void HostDisconnected(TInt aError) = 0;                                       /* +0x2c */
+    virtual void ReceiveDataFromClient(TUint16 aClientId, TDesC8 &aData) = 0;             /* +0x30 */
+    virtual void ReceiveDataFromHost(TDesC8 &aData) = 0;                                  /* +0x34 */
 };
 
 /* ------------------------------------------------------------------ */
@@ -54,9 +54,9 @@ public:
 /* ------------------------------------------------------------------ */
 class TDeviceDetails
 {
-public:
+  public:
     TBTSockAddr iAddress;
-    TBuf<256>   iName;
+    TBuf<256> iName;
 };
 
 /* ------------------------------------------------------------------ */
@@ -65,18 +65,18 @@ public:
 /* ------------------------------------------------------------------ */
 class MGameBTCommsNotify2
 {
-public:
+  public:
     /** Host, accept mode "confirm" without built-in UI: a device wants
      *  to join; accept it with DeclareRemoteDevice(). */
-    virtual void ConfirmDevice(const TDeviceDetails& aDevice) = 0;                          /* +0x08 */
+    virtual void ConfirmDevice(const TDeviceDetails &aDevice) = 0; /* +0x08 */
     /** A remote device was declared (host: client id 1..3, client: 0). */
-    virtual void DeviceDeclared(TInt aId, const TDeviceDetails& aDevice, TInt aError) = 0;  /* +0x0c */
+    virtual void DeviceDeclared(TInt aId, const TDeviceDetails &aDevice, TInt aError) = 0; /* +0x0c */
     /** Connection to aId established (or failed with aError). */
-    virtual void Connected(TInt aId, TInt aError) = 0;                                      /* +0x10 */
+    virtual void Connected(TInt aId, TInt aError) = 0; /* +0x10 */
     /** Connection to aId closed. */
-    virtual void Disconnected(TInt aId, TInt aReason) = 0;                                  /* +0x14 */
+    virtual void Disconnected(TInt aId, TInt aReason) = 0; /* +0x14 */
     /** Data from aId (client: 0 = host). */
-    virtual void ReceiveData(TInt aId, const TDesC8& aData) = 0;                            /* +0x18 */
+    virtual void ReceiveData(TInt aId, const TDesC8 &aData) = 0; /* +0x18 */
 };
 
 /* ------------------------------------------------------------------ */
@@ -90,16 +90,16 @@ public:
  *  with an empty TDeviceDetails and KErrEof when the search is over. */
 class MGameBTDiscovererObserver
 {
-public:
-    virtual void DeviceFound(const TDeviceDetails& aDevice, TInt aError) = 0; /* +0x08 */
+  public:
+    virtual void DeviceFound(const TDeviceDetails &aDevice, TInt aError) = 0; /* +0x08 */
 };
 
 /** CGameBTResolver: result of Start(): the device, its RFCOMM channel and
  *  KErrNone, or KErrNotFound / another error. */
 class MGameBTResolverObserver
 {
-public:
-    virtual void Resolved(const TDeviceDetails& aDevice, TInt aChannel, TInt aError) = 0; /* +0x08 */
+  public:
+    virtual void Resolved(const TDeviceDetails &aDevice, TInt aChannel, TInt aError) = 0; /* +0x08 */
 };
 
 /* ------------------------------------------------------------------ */
@@ -109,15 +109,19 @@ public:
 /* ------------------------------------------------------------------ */
 class RSGEDebugLog
 {
-public:
-    enum TLogLevel { EAll = 0 };
+  public:
+    enum TLogLevel
+    {
+        EAll = 0
+    };
     RSGEDebugLog();
     virtual ~RSGEDebugLog();
-public:
-    TInt  iReserved0;
-    TInt  iReserved1;
-    TInt  iReserved2;
-    TInt  iLevel;     /* +0x0c, written by SetLoggingLevel */
+
+  public:
+    TInt iReserved0;
+    TInt iReserved1;
+    TInt iReserved2;
+    TInt iLevel; /* +0x0c, written by SetLoggingLevel */
 };
 
 /* Magic prefix of the synthetic Bluetooth addresses we hand out in
@@ -125,7 +129,7 @@ public:
 const TUint8 KGcAddrMagic0 = 0x47; /* 'G' */
 const TUint8 KGcAddrMagic1 = 0x43; /* 'C' */
 
-void GcDeviceToDetails(const gcd_device& aDev, TDeviceDetails& aDetails);
-void GcDetailsToDevice(const TDeviceDetails& aDetails, gcd_device& aDev);
+void GcDeviceToDetails(const gcd_device &aDev, TDeviceDetails &aDetails);
+void GcDetailsToDevice(const TDeviceDetails &aDetails, gcd_device &aDev);
 
 #endif /* GCPLATFORM_H */

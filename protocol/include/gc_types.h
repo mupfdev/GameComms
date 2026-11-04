@@ -22,12 +22,12 @@
 extern "C" {
 #endif
 
-typedef unsigned char  gc_u8;
-typedef signed char    gc_i8;
+typedef unsigned char gc_u8;
+typedef signed char gc_i8;
 typedef unsigned short gc_u16;
-typedef signed short   gc_i16;
-typedef unsigned int   gc_u32; /* int is 32 bits on every supported target */
-typedef signed int     gc_i32;
+typedef signed short gc_i16;
+typedef unsigned int gc_u32; /* int is 32 bits on every supported target */
+typedef signed int gc_i32;
 
 #define GC_TRUE  1
 #define GC_FALSE 0

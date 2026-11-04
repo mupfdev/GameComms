@@ -4,50 +4,46 @@
 #include "BTServiceSearcher.pan"
 
 CBTServiceSearcher::CBTServiceSearcher()
-:  iIsDeviceSelectorConnected(EFalse)
-    {
-    }
+    : iIsDeviceSelectorConnected(EFalse)
+{
+}
 
 CBTServiceSearcher::~CBTServiceSearcher()
-    {
-    if (iIsDeviceSelectorConnected)
-        {
+{
+    if (iIsDeviceSelectorConnected) {
         iDeviceSelector.CancelNotifier(KDeviceSelectionNotifierUid);
         iDeviceSelector.Close();
-        }
+    }
     delete iSdpSearchPattern;
     iSdpSearchPattern = NULL;
 
     delete iAgent;
     iAgent = NULL;
-    }
+}
 
-void CBTServiceSearcher::SelectDeviceByDiscoveryL(TRequestStatus& aObserverRequestStatus)
-    {
-    if (!iIsDeviceSelectorConnected)
-        {
+void CBTServiceSearcher::SelectDeviceByDiscoveryL(TRequestStatus &aObserverRequestStatus)
+{
+    if (!iIsDeviceSelectorConnected) {
         User::LeaveIfError(iDeviceSelector.Connect());
         iIsDeviceSelectorConnected = ETrue;
-        }
+    }
 
-    //  Request a device selection 
+    //  Request a device selection
     TBTDeviceSelectionParamsPckg selectionFilter;
     selectionFilter().SetUUID(ServiceClass());
 
     iDeviceSelector.StartNotifierAndGetResponse(
-        aObserverRequestStatus, 
-        KDeviceSelectionNotifierUid, 
-        selectionFilter, 
+        aObserverRequestStatus,
+        KDeviceSelectionNotifierUid,
+        selectionFilter,
         iResponse);
-    }
+}
 
-
-void CBTServiceSearcher::FindServiceL(TRequestStatus& aObserverRequestStatus)
-    {
-    if (!iResponse().IsValidBDAddr())
-        {
+void CBTServiceSearcher::FindServiceL(TRequestStatus &aObserverRequestStatus)
+{
+    if (!iResponse().IsValidBDAddr()) {
         User::Leave(KErrNotFound);
-        }
+    }
     iHasFoundService = EFalse;
 
     // delete any existing agent and search pattern
@@ -60,11 +56,11 @@ void CBTServiceSearcher::FindServiceL(TRequestStatus& aObserverRequestStatus)
     iAgent = CSdpAgent::NewL(*this, BTDevAddr());
 
     iSdpSearchPattern = CSdpSearchPattern::NewL();
-   
-    iSdpSearchPattern->AddL(ServiceClass()); 
-    // return code is the position in the list that the UUID is inserted at 
+
+    iSdpSearchPattern->AddL(ServiceClass());
+    // return code is the position in the list that the UUID is inserted at
     // and is intentionally ignored
-  
+
     iAgent->SetRecordFilterL(*iSdpSearchPattern);
 
     iStatusObserver = &aObserverRequestStatus;
@@ -77,77 +73,67 @@ void CBTServiceSearcher::FindServiceL(TRequestStatus& aObserverRequestStatus)
     aObserverRequestStatus = KRequestPending;
 
     iAgent->NextRecordRequestL();
-    }
+}
 
 void CBTServiceSearcher::NextRecordRequestComplete(
-    TInt aError, 
-    TSdpServRecordHandle aHandle, 
+    TInt aError,
+    TSdpServRecordHandle aHandle,
     TInt aTotalRecordsCount)
-    {
+{
     TRAPD(error,
-        NextRecordRequestCompleteL(aError, aHandle, aTotalRecordsCount);
-    );
+          NextRecordRequestCompleteL(aError, aHandle, aTotalRecordsCount););
 
-    if (error != KErrNone) 
-        {
+    if (error != KErrNone) {
         Panic(EBTServiceSearcherNextRecordRequestComplete);
-        }
     }
+}
 
 void CBTServiceSearcher::NextRecordRequestCompleteL(
-    TInt aError, 
-    TSdpServRecordHandle aHandle, 
-    TInt aTotalRecordsCount
-)
-    {
-    if (aError == KErrEof)
-        {
+    TInt aError,
+    TSdpServRecordHandle aHandle,
+    TInt aTotalRecordsCount)
+{
+    if (aError == KErrEof) {
         Finished();
         return;
-        }
+    }
 
-    if (aError != KErrNone)
-        {
+    if (aError != KErrNone) {
         // NRRC ERR
         Finished(aError);
         return;
-        }
+    }
 
-    if (aTotalRecordsCount == 0)
-        {
+    if (aTotalRecordsCount == 0) {
         // NRRC No records
         Finished(KErrNotFound);
         return;
-        }
+    }
 
     //  Request its attributes
     iAgent->AttributeRequestL(aHandle, KSdpAttrIdProtocolDescriptorList);
-    }
+}
 
 void CBTServiceSearcher::AttributeRequestResult(
-    TSdpServRecordHandle aHandle, 
-    TSdpAttributeID aAttrID, 
-    CSdpAttrValue* aAttrValue
-)
-    {
+    TSdpServRecordHandle aHandle,
+    TSdpAttributeID aAttrID,
+    CSdpAttrValue *aAttrValue)
+{
     TRAPD(error,
-        AttributeRequestResultL(aHandle, aAttrID, aAttrValue);
-    );
-    if (error != KErrNone)
-        {
+          AttributeRequestResultL(aHandle, aAttrID, aAttrValue););
+    if (error != KErrNone) {
         Panic(EBTServiceSearcherAttributeRequestResult);
-        }
+    }
 
     // Ownership has been transferred
     delete aAttrValue;
-    }
+}
 
 void CBTServiceSearcher::AttributeRequestResultL(
-    TSdpServRecordHandle /*aHandle*/, 
-    TSdpAttributeID aAttrID, 
-    CSdpAttrValue* aAttrValue
-)
-    {
+    TSdpServRecordHandle /*aHandle*/,
+    TSdpAttributeID aAttrID,
+    CSdpAttrValue *aAttrValue)
+{
     ASSERT(aAttrID == KSdpAttrIdProtocolDescriptorList);
 
     TSdpAttributeParser parser(ProtocolList(), *this);
@@ -155,97 +141,85 @@ void CBTServiceSearcher::AttributeRequestResultL(
     // Validate the attribute value, and extract the RFCOMM channel
     aAttrValue->AcceptVisitorL(parser);
 
-    if (parser.HasFinished())
-        {
+    if (parser.HasFinished()) {
         // Found a suitable record so change state
         iHasFoundService = ETrue;
-        }
     }
+}
 
 void CBTServiceSearcher::AttributeRequestComplete(TSdpServRecordHandle aHandle, TInt aError)
-    {
+{
     TRAPD(error,
-        AttributeRequestCompleteL(aHandle, aError);
-    );
-    if (error != KErrNone)
-        {
+          AttributeRequestCompleteL(aHandle, aError););
+    if (error != KErrNone) {
         Panic(EBTServiceSearcherAttributeRequestComplete);
-        }
     }
+}
 
 void CBTServiceSearcher::AttributeRequestCompleteL(TSdpServRecordHandle /*aHandle*/, TInt aError)
-    {
-    if (aError != KErrNone)
-        {
-        //Can't get attribute
-        }
-    else if (!HasFinishedSearching())
-        {
+{
+    if (aError != KErrNone) {
+        // Can't get attribute
+    } else if (!HasFinishedSearching()) {
         // have not found a suitable record so request another
         iAgent->NextRecordRequestL();
-        }
-    else
-        {
+    } else {
         // AttrReqCom
         Finished();
-        }
     }
+}
 
 void CBTServiceSearcher::Finished(TInt aError /* default = KErrNone */)
-    {
-    if (aError == KErrNone && !HasFoundService())
-        {
+{
+    if (aError == KErrNone && !HasFoundService()) {
         aError = KErrNotFound;
-        }
-    if (iStatusObserver)
-        {
+    }
+    if (iStatusObserver) {
         User::RequestComplete(iStatusObserver, aError);
         iStatusObserver = NULL;
-        }
     }
+}
 
 TBool CBTServiceSearcher::HasFinishedSearching() const
-    {
+{
     return EFalse;
-    }
+}
 
-const TBTDevAddr& CBTServiceSearcher::BTDevAddr()
-    {
+const TBTDevAddr &CBTServiceSearcher::BTDevAddr()
+{
     return iResponse().BDAddr();
-    }
+}
 
-const TBTDeviceResponseParams& CBTServiceSearcher::ResponseParams()
-    {
+const TBTDeviceResponseParams &CBTServiceSearcher::ResponseParams()
+{
     return iResponse();
-    }
+}
 
 TBool CBTServiceSearcher::HasFoundService() const
-    {
+{
     return iHasFoundService;
-    }
+}
 
-void CBTServiceSearcher::SetDeviceAddress(const TBTDevAddr& aAddr)
-    {
+void CBTServiceSearcher::SetDeviceAddress(const TBTDevAddr &aAddr)
+{
     iResponse().SetDeviceAddress(aAddr);
-    }
+}
 
 void CBTServiceSearcher::CancelFindService()
-    {
+{
     // GameComms addition: stop a running service search and complete the
     // caller's request, so that its Cancel() does not wait forever
     delete iAgent;
     iAgent = NULL;
-    if (iStatusObserver)
-        {
+    if (iStatusObserver) {
         User::RequestComplete(iStatusObserver, KErrCancel);
         iStatusObserver = NULL;
-        }
     }
+}
 
 void CBTServiceSearcher::CancelSelection()
-    {
-    if (iIsDeviceSelectorConnected)
-        {
+{
+    if (iIsDeviceSelectorConnected) {
         iDeviceSelector.CancelNotifier(KDeviceSelectionNotifierUid);
-        }
     }
+}

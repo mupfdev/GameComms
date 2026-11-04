@@ -3,102 +3,100 @@
 #ifndef __MESSAGESERVICESEARCHER_H__
 #define __MESSAGESERVICESEARCHER_H__
 
-#include <e32base.h>
 #include "BTServiceSearcher.h"
+#include <e32base.h>
 
-/*! 
+/*!
   @class CMessageServiceSearcher
-  
+
   @discussion Searches for a message service.
   */
 class CMessageServiceSearcher : public CBTServiceSearcher
-    {
-public:
-/*!
-  @function NewL
-   
-  @discussion Create a CMessageServiceSearcher object
-  @result a pointer to the created instance of CMessageServiceSearcher
-  */
-    static CMessageServiceSearcher* NewL();
+{
+  public:
+    /*!
+      @function NewL
 
-/*!
-  @function NewLC
-   
-  @discussion Create a CMessageServiceSearcher object
-  @result a pointer to the created instance of CMessageServiceSearcher
-  */
-    static CMessageServiceSearcher* NewLC();
+      @discussion Create a CMessageServiceSearcher object
+      @result a pointer to the created instance of CMessageServiceSearcher
+      */
+    static CMessageServiceSearcher *NewL();
 
-/*!
-  @function ~CMessageServiceSearcher
-  
-  @discussion Destroy the object and release all memory objects. Close any open sockets
-  */
+    /*!
+      @function NewLC
+
+      @discussion Create a CMessageServiceSearcher object
+      @result a pointer to the created instance of CMessageServiceSearcher
+      */
+    static CMessageServiceSearcher *NewLC();
+
+    /*!
+      @function ~CMessageServiceSearcher
+
+      @discussion Destroy the object and release all memory objects. Close any open sockets
+      */
     ~CMessageServiceSearcher();
 
-/*!
-  @function Port
-   
-  @discussion Retrieve the port on which the service is installed
-  @result the port number
-  */
+    /*!
+      @function Port
+
+      @discussion Retrieve the port on which the service is installed
+      @result the port number
+      */
     TInt Port();
 
-/*!
-  @function ResetPort
+    /*!
+      @function ResetPort
 
-  @discussion Forget the channel of an earlier search (GameComms addition)
-  */
+      @discussion Forget the channel of an earlier search (GameComms addition)
+      */
     void ResetPort() { iPort = -1; }
 
-protected:
+  protected:
+    /*!
+      @function ServiceClass
 
-/*!
-  @function ServiceClass
+      @result the service class uid.
+      */
+    const TUUID &ServiceClass() const;
 
-  @result the service class uid.
-  */
-    const TUUID& ServiceClass() const;
+    /*!
+      @function ProtocolList
 
-/*!
-  @function ProtocolList
+      @result the attribute list.
+      */
+    const TSdpAttributeParser::TSdpAttributeList &ProtocolList() const;
 
-  @result the attribute list.
-  */
-    const TSdpAttributeParser::TSdpAttributeList& ProtocolList() const;
+    /*!
+      @function FoundElementL
 
-/*!
-  @function FoundElementL
-  
-  @discussion Read the data element
-  @param aKey a key that identifies the element
-  @param aValue the data element
-  */
-    virtual void FoundElementL(TInt aKey, CSdpAttrValue& aValue);
+      @discussion Read the data element
+      @param aKey a key that identifies the element
+      @param aValue the data element
+      */
+    virtual void FoundElementL(TInt aKey, CSdpAttrValue &aValue);
 
-private:
-/*!
-  @function CMessageServiceSearcher
+  private:
+    /*!
+      @function CMessageServiceSearcher
 
-  @discussion Constructs this object
-  */
+      @discussion Constructs this object
+      */
     CMessageServiceSearcher();
 
-/*!
-  @function ConstructL
+    /*!
+      @function ConstructL
 
-  @discussion Performs second phase construction of this object
-  */
+      @discussion Performs second phase construction of this object
+      */
     void ConstructL();
 
-private:
+  private:
     /*! @var iServiceClass the service class UUID to search for */
     TUUID iServiceClass;
 
     /*! @var iPort the port number that the remote service is installed */
     TInt iPort;
-    };
+};
 
 #endif // __MESSAGESERVICESEARCHER_H__
-

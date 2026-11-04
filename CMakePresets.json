@@ -1,23 +1,259 @@
-﻿{
-  "version": 3,
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
   "configurePresets": [
     {
-      "name": "N-Gage",
-      "displayName": "Nokia N-Gage",
+      "name": "base",
+      "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/out/build/${presetName}",
       "installDir": "${sourceDir}/out/install/${presetName}",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "windows-msvc",
+      "hidden": true,
+      "description": "Host build with MSVC (run from a Developer Command Prompt or Visual Studio)",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl"
+      }
+    },
+    {
+      "name": "N-Gage",
+      "displayName": "Nokia N-Gage",
+      "inherits": "base",
+      "description": "All GAMECOMMS.DLL variants (N-Gage SDK toolchain, needs NGAGESDK)",
+      "cacheVariables": {
+        "GC_COMPONENT": "dll",
         "CMAKE_TOOLCHAIN_FILE": "$env{NGAGESDK}/cmake/ngage-toolchain.cmake",
         "CMAKE_PREFIX_PATH": "$env{NGAGESDK}/sdk/extras/lib/cmake"
+      }
+    },
+    {
+      "name": "pcbridge-windows",
+      "displayName": "PC bridge (Windows)",
+      "inherits": [
+        "base",
+        "windows-msvc"
+      ],
+      "description": "gcbridge.exe, statically linked (MSVC)",
+      "cacheVariables": {
+        "GC_COMPONENT": "pcbridge"
+      }
+    },
+    {
+      "name": "server",
+      "displayName": "Server",
+      "inherits": "base",
+      "description": "Endpoint server gamecommsd with unit tests (host compiler)",
+      "cacheVariables": {
+        "GC_COMPONENT": "server"
+      }
+    },
+    {
+      "name": "all",
+      "displayName": "Everything",
+      "inherits": [
+        "base",
+        "windows-msvc"
+      ],
+      "description": "PC bridge, server and all DLL variants, staged in out/build/all/dist/PhantomLink (needs NGAGESDK)",
+      "cacheVariables": {
+        "GC_COMPONENT": "all"
       }
     }
   ],
   "buildPresets": [
     {
       "name": "N-Gage",
+      "displayName": "All DLL variants",
       "configurePreset": "N-Gage"
+    },
+    {
+      "name": "N-Gage-v1",
+      "displayName": "DLL variant v1",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v1_out"
+      ]
+    },
+    {
+      "name": "N-Gage-v2",
+      "displayName": "DLL variant v2",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v2_out"
+      ]
+    },
+    {
+      "name": "N-Gage-v3",
+      "displayName": "DLL variant v3",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v3_out"
+      ]
+    },
+    {
+      "name": "N-Gage-v4",
+      "displayName": "DLL variant v4",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v4_out"
+      ]
+    },
+    {
+      "name": "N-Gage-v5",
+      "displayName": "DLL variant v5",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v5_out"
+      ]
+    },
+    {
+      "name": "N-Gage-v6",
+      "displayName": "DLL variant v6",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v6_out"
+      ]
+    },
+    {
+      "name": "N-Gage-v7",
+      "displayName": "DLL variant v7",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v7_out"
+      ]
+    },
+    {
+      "name": "N-Gage-v8",
+      "displayName": "DLL variant v8",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v8_out"
+      ]
+    },
+    {
+      "name": "N-Gage-v9",
+      "displayName": "DLL variant v9",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v9_out"
+      ]
+    },
+    {
+      "name": "N-Gage-v10",
+      "displayName": "DLL variant v10",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v10_out"
+      ]
+    },
+    {
+      "name": "N-Gage-v11",
+      "displayName": "DLL variant v11",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "gamecomms_v11_out"
+      ]
+    },
+    {
+      "name": "pcbridge-windows",
+      "configurePreset": "pcbridge-windows",
+      "displayName": "PC bridge (Windows)"
+    },
+    {
+      "name": "server",
+      "configurePreset": "server",
+      "displayName": "Server"
+    },
+    {
+      "name": "all",
+      "configurePreset": "all",
+      "displayName": "Everything"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "server",
+      "configurePreset": "server",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "N-Gage",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "N-Gage"
+        },
+        {
+          "type": "build",
+          "name": "N-Gage"
+        }
+      ],
+      "displayName": "Nokia N-Gage (all DLL variants)"
+    },
+    {
+      "name": "pcbridge-windows",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "pcbridge-windows"
+        },
+        {
+          "type": "build",
+          "name": "pcbridge-windows"
+        }
+      ],
+      "displayName": "PC bridge (Windows)"
+    },
+    {
+      "name": "server",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "server"
+        },
+        {
+          "type": "build",
+          "name": "server"
+        },
+        {
+          "type": "test",
+          "name": "server"
+        }
+      ],
+      "displayName": "Server"
+    },
+    {
+      "name": "all",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "all"
+        },
+        {
+          "type": "build",
+          "name": "all"
+        }
+      ],
+      "displayName": "Everything"
     }
   ]
 }

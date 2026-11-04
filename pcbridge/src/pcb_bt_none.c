@@ -8,8 +8,8 @@
  *
  **/
 
-#include <stdio.h>
 #include "pcb_bt.h"
+#include <stdio.h>
 
 int pcb_bt_open(const pcb_bt_cfg *cfg, char *err, size_t errlen)
 {

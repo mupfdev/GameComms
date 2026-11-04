@@ -21,7 +21,7 @@ typedef struct
 {
     const char *service_name; /* shown in SDP, e.g. "GameComms Bridge" */
     const char *pin;          /* legacy PIN answered automatically, "" = off */
-    int         channel;      /* RFCOMM channel, 0 = any free channel */
+    int channel;              /* RFCOMM channel, 0 = any free channel */
     const char *adapter;      /* Linux: BlueZ adapter, e.g. "hci0" */
     void (*log)(int level, const char *fmt, ...);
 } pcb_bt_cfg;

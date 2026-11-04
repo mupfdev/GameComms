@@ -5,7 +5,7 @@
  *    C:\System\Data\GameComms.ini
  *
  *  [Config]
- *  DeviceName=mupfdev        ; name shown to other players (default: phone BT name)
+ *  DeviceName=Maxwell        ; name shown to other players (default: phone BT name)
  *  AutoJoin=0                ; 1 = clients join the first open session without asking
  *  Log=0                     ; 1 = write E:\GameComms.log
  *  [Bridge]
@@ -20,26 +20,26 @@
 #ifndef GCCONFIG_H
 #define GCCONFIG_H
 
-#include <e32base.h>
 #include <bttypes.h>
+#include <e32base.h>
 
 class TGcConfig
 {
-public:
+  public:
     TGcConfig();
     /** Reads the settings file; missing file/keys keep the defaults. */
     void Load();
     /** Persists the bridge address after the first successful selection. */
-    void SaveBridgeAddress(const TBTDevAddr& aAddr);
+    void SaveBridgeAddress(const TBTDevAddr &aAddr);
 
-public:
-    TBuf8<33>  iDeviceName;   /* UTF-8, empty = use Bluetooth name */
-    TBool      iAutoJoin;
-    TBool      iLog;
-    TBool      iHasBridge;
+  public:
+    TBuf8<33> iDeviceName; /* UTF-8, empty = use Bluetooth name */
+    TBool iAutoJoin;
+    TBool iLog;
+    TBool iHasBridge;
     TBTDevAddr iBridge;
-    TInt       iChannel;
-    TFileName  iPath;         /* file that was read */
+    TInt iChannel;
+    TFileName iPath; /* file that was read */
 };
 
 #endif /* GCCONFIG_H */

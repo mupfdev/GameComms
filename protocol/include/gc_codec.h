@@ -55,7 +55,7 @@ typedef struct
     gc_u8 *data;
     size_t cap;
     size_t len;
-    int    overflow; /* sticky: set once any write did not fit */
+    int overflow; /* sticky: set once any write did not fit */
 } gc_writer;
 
 void gc_w_init(gc_writer *w, gc_u8 *buf, size_t cap);
@@ -69,20 +69,20 @@ void gc_w_str8(gc_writer *w, const char *s, size_t len);
 typedef struct
 {
     const gc_u8 *data;
-    size_t       len;
-    size_t       pos;
-    int          error; /* sticky: set once any read ran past the end */
+    size_t len;
+    size_t pos;
+    int error; /* sticky: set once any read ran past the end */
 } gc_reader;
 
-void         gc_r_init(gc_reader *r, const gc_u8 *buf, size_t len);
-gc_u8        gc_r_u8(gc_reader *r);
-gc_u16       gc_r_u16(gc_reader *r);
-gc_u32       gc_r_u32(gc_reader *r);
+void gc_r_init(gc_reader *r, const gc_u8 *buf, size_t len);
+gc_u8 gc_r_u8(gc_reader *r);
+gc_u16 gc_r_u16(gc_reader *r);
+gc_u32 gc_r_u32(gc_reader *r);
 const gc_u8 *gc_r_bytes(gc_reader *r, size_t n);
 /** Reads a u8-length-prefixed string into out (NUL terminated, truncated
  *  to out_cap-1).  Returns the stored length. */
-size_t       gc_r_str8(gc_reader *r, char *out, size_t out_cap);
-size_t       gc_r_remaining(const gc_reader *r);
+size_t gc_r_str8(gc_reader *r, char *out, size_t out_cap);
+size_t gc_r_remaining(const gc_reader *r);
 
 /* ---- Stream framer ---- */
 
@@ -96,17 +96,17 @@ typedef void (*gc_frame_cb)(void *ctx, const gc_u8 *body, size_t len);
 
 typedef struct
 {
-    gc_u8       buf[GC_COBS_MAX_ENCODED(GC_FRAME_MAX_BODY + 2)];
-    size_t      len;
-    int         discarding; /* oversize frame: drop until delimiter */
+    gc_u8 buf[GC_COBS_MAX_ENCODED(GC_FRAME_MAX_BODY + 2)];
+    size_t len;
+    int discarding; /* oversize frame: drop until delimiter */
     gc_frame_cb cb;
-    void       *ctx;
+    void *ctx;
     /* statistics (useful for diagnostics and tests) */
-    gc_u32      frames_ok;
-    gc_u32      err_crc;
-    gc_u32      err_cobs;
-    gc_u32      err_oversize;
-    gc_u32      err_short;
+    gc_u32 frames_ok;
+    gc_u32 err_crc;
+    gc_u32 err_cobs;
+    gc_u32 err_oversize;
+    gc_u32 err_short;
 } gc_deframer;
 
 void gc_deframer_init(gc_deframer *d, gc_frame_cb cb, void *ctx);

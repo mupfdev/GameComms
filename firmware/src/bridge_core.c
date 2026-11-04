@@ -8,9 +8,9 @@
  *
  **/
 
+#include "bridge_core.h"
 #include <stdio.h>
 #include <string.h>
-#include "bridge_core.h"
 
 /* ---- logging ---- */
 
@@ -23,10 +23,9 @@ static void blog(bridge *b, const char *fmt, ...)
 #include <stdarg.h>
 static void blog(bridge *b, const char *fmt, ...)
 {
-    char    line[160];
+    char line[160];
     va_list ap;
-    if (!b->io.log)
-    {
+    if (!b->io.log) {
         return;
     }
     va_start(ap, fmt);
@@ -40,8 +39,7 @@ static void blog(bridge *b, const char *fmt, ...)
 static int fifo_push(bridge_fifo *f, const gc_u8 *d, size_t n)
 {
     bridge_slot *s;
-    if (f->count >= BRIDGE_FIFO_LEN || n > GC_LINK_MAX_MSG)
-    {
+    if (f->count >= BRIDGE_FIFO_LEN || n > GC_LINK_MAX_MSG) {
         return 0;
     }
     s = &f->s[(f->head + f->count) % BRIDGE_FIFO_LEN];
@@ -58,8 +56,7 @@ static bridge_slot *fifo_peek(bridge_fifo *f)
 
 static void fifo_pop(bridge_fifo *f)
 {
-    if (f->count)
-    {
+    if (f->count) {
         f->head = (f->head + 1) % BRIDGE_FIFO_LEN;
         f->count--;
     }
@@ -75,14 +72,11 @@ static void fifo_clear(bridge_fifo *f)
 static void fifo_drain(bridge *b, bridge_fifo *f, gc_link *l)
 {
     bridge_slot *s;
-    if (l->state != GC_LS_UP)
-    {
+    if (l->state != GC_LS_UP) {
         return;
     }
-    while ((s = fifo_peek(f)) != NULL && gc_link_free_slots(l) > 0)
-    {
-        if (gc_link_send(l, s->data, s->len, b->now) != GC_LINK_OK)
-        {
+    while ((s = fifo_peek(f)) != NULL && gc_link_free_slots(l) > 0) {
+        if (gc_link_send(l, s->data, s->len, b->now) != GC_LINK_OK) {
             break;
         }
         fifo_pop(f);
@@ -93,14 +87,12 @@ static void fifo_drain(bridge *b, bridge_fifo *f, gc_link *l)
 
 static void dev_send(bridge *b, const gc_msg *m)
 {
-    gc_u8  buf[GC_LINK_MAX_MSG];
+    gc_u8 buf[GC_LINK_MAX_MSG];
     size_t n = gc_msg_encode(m, buf, sizeof(buf));
-    if (!n)
-    {
+    if (!n) {
         return;
     }
-    if (b->dev.state == GC_LS_UP && b->to_dev.count == 0 && gc_link_send(&b->dev, buf, n, b->now) == GC_LINK_OK)
-    {
+    if (b->dev.state == GC_LS_UP && b->to_dev.count == 0 && gc_link_send(&b->dev, buf, n, b->now) == GC_LINK_OK) {
         return;
     }
     fifo_push(&b->to_dev, buf, n);
@@ -109,8 +101,7 @@ static void dev_send(bridge *b, const gc_msg *m)
 static void send_status(bridge *b)
 {
     gc_msg m;
-    if (b->dev.state != GC_LS_UP)
-    {
+    if (b->dev.state != GC_LS_UP) {
         return;
     }
     memset(&m, 0, sizeof(m));
@@ -124,8 +115,7 @@ static void send_status(bridge *b)
 
 static void set_srv_state(bridge *b, int st)
 {
-    if (b->srv_state != st)
-    {
+    if (b->srv_state != st) {
         b->srv_state = st;
         send_status(b);
     }
@@ -136,30 +126,29 @@ static void reply_unavailable(bridge *b, gc_u8 req_type)
 {
     gc_msg m;
     memset(&m, 0, sizeof(m));
-    switch (req_type)
-    {
-        case GC_MT_REGISTER:
-            m.type = GC_MT_REGISTERED;
-            m.u.registered.result = GC_R_UNAVAILABLE;
-            break;
-        case GC_MT_HOST_OPEN:
-            m.type = GC_MT_HOST_OPENED;
-            m.u.host_opened.result = GC_R_UNAVAILABLE;
-            break;
-        case GC_MT_JOIN:
-            m.type = GC_MT_JOIN_RESULT;
-            m.u.join_result.result = GC_R_UNAVAILABLE;
-            m.u.join_result.slot = GC_SLOT_NONE;
-            break;
-        case GC_MT_DISCOVER:
-            m.type = GC_MT_SESSION_LIST; /* empty list */
-            break;
-        default:
-            m.type = GC_MT_ERROR;
-            m.u.error.code = GC_R_UNAVAILABLE;
-            m.u.error.ref_type = req_type;
-            strcpy(m.u.error.text, "server unreachable");
-            break;
+    switch (req_type) {
+    case GC_MT_REGISTER:
+        m.type = GC_MT_REGISTERED;
+        m.u.registered.result = GC_R_UNAVAILABLE;
+        break;
+    case GC_MT_HOST_OPEN:
+        m.type = GC_MT_HOST_OPENED;
+        m.u.host_opened.result = GC_R_UNAVAILABLE;
+        break;
+    case GC_MT_JOIN:
+        m.type = GC_MT_JOIN_RESULT;
+        m.u.join_result.result = GC_R_UNAVAILABLE;
+        m.u.join_result.slot = GC_SLOT_NONE;
+        break;
+    case GC_MT_DISCOVER:
+        m.type = GC_MT_SESSION_LIST; /* empty list */
+        break;
+    default:
+        m.type = GC_MT_ERROR;
+        m.u.error.code = GC_R_UNAVAILABLE;
+        m.u.error.ref_type = req_type;
+        strcpy(m.u.error.text, "server unreachable");
+        break;
     }
     dev_send(b, &m);
 }
@@ -174,12 +163,10 @@ static int srv_usable(bridge *b)
 
 static void srv_queue(bridge *b, const gc_u8 *d, size_t n)
 {
-    if (b->srv.state == GC_LS_UP && b->to_srv.count == 0 && gc_link_send(&b->srv, d, n, b->now) == GC_LINK_OK)
-    {
+    if (b->srv.state == GC_LS_UP && b->to_srv.count == 0 && gc_link_send(&b->srv, d, n, b->now) == GC_LINK_OK) {
         return;
     }
-    if (!fifo_push(&b->to_srv, d, n))
-    {
+    if (!fifo_push(&b->to_srv, d, n)) {
         blog(b, "server queue full, dropping %s", gc_msg_name(d[0]));
     }
 }
@@ -189,8 +176,7 @@ static void srv_queue(bridge *b, const gc_u8 *d, size_t n)
 static void dev_write_cb(void *ctx, const gc_u8 *d, size_t n)
 {
     bridge *b = (bridge *)ctx;
-    if (b->dev_connected && b->io.dev_write)
-    {
+    if (b->dev_connected && b->io.dev_write) {
         b->io.dev_write(b->ctx, d, n);
     }
 }
@@ -204,36 +190,30 @@ static int dev_can_accept(void *ctx)
 static void dev_msg_cb(void *ctx, const gc_u8 *d, size_t n)
 {
     bridge *b = (bridge *)ctx;
-    gc_msg  m;
-    gc_u8   buf[GC_LINK_MAX_MSG];
+    gc_msg m;
+    gc_u8 buf[GC_LINK_MAX_MSG];
 
     b->st_dev_msgs++;
-    if (n == 0)
-    {
+    if (n == 0) {
         return;
     }
-    if (d[0] == GC_MT_BRIDGE_QUERY)
-    {
+    if (d[0] == GC_MT_BRIDGE_QUERY) {
         send_status(b);
         return;
     }
-    if (d[0] == GC_MT_REGISTER)
-    {
+    if (d[0] == GC_MT_REGISTER) {
         /* fill in the device id from the Bluetooth address and add the
          * access key; remember the message for replay */
-        if (!gc_msg_decode(d, n, &m))
-        {
+        if (!gc_msg_decode(d, n, &m)) {
             return;
         }
         if (m.u.reg.device_id[0] == 0 && m.u.reg.device_id[1] == 0 && m.u.reg.device_id[2] == 0 &&
-            m.u.reg.device_id[3] == 0 && m.u.reg.device_id[4] == 0 && m.u.reg.device_id[5] == 0)
-        {
+            m.u.reg.device_id[3] == 0 && m.u.reg.device_id[4] == 0 && m.u.reg.device_id[5] == 0) {
             memcpy(m.u.reg.device_id, b->dev_addr, GC_DEVICE_ID_LEN);
         }
         strcpy(m.u.reg.key, b->cfg.access_key);
         n = gc_msg_encode(&m, buf, sizeof(buf));
-        if (!n)
-        {
+        if (!n) {
             return;
         }
         memcpy(b->reg_msg, buf, n);
@@ -242,13 +222,11 @@ static void dev_msg_cb(void *ctx, const gc_u8 *d, size_t n)
         d = buf;
         blog(b, "device '%s' registers (api %u, variant %u)", m.u.reg.name, m.u.reg.api, m.u.reg.variant);
     }
-    if (!srv_usable(b))
-    {
+    if (!srv_usable(b)) {
         reply_unavailable(b, d[0]);
         return;
     }
-    if (d[0] == GC_MT_REGISTER && b->srv.state != GC_LS_UP)
-    {
+    if (d[0] == GC_MT_REGISTER && b->srv.state != GC_LS_UP) {
         return; /* replayed automatically when the link comes up */
     }
     srv_queue(b, d, n);
@@ -257,30 +235,28 @@ static void dev_msg_cb(void *ctx, const gc_u8 *d, size_t n)
 static void dev_state_cb(void *ctx, int ev, int reason)
 {
     bridge *b = (bridge *)ctx;
-    switch (ev)
-    {
-        case GC_LE_UP_FRESH:
-            blog(b, "device link up");
-            fifo_clear(&b->to_dev);
-            b->dev_lost_pending = 0;
-            send_status(b);
-            break;
-        case GC_LE_UP_RESUMED:
-            blog(b, "device link resumed");
-            b->dev_lost_pending = 0;
-            fifo_drain(b, &b->to_dev, &b->dev);
-            break;
-        case GC_LE_DOWN:
-        case GC_LE_CLOSED:
-            blog(b, "device link %s (%d)", ev == GC_LE_DOWN ? "down" : "closed", reason);
-            if (!b->dev_lost_pending)
-            {
-                b->dev_lost_pending = 1;
-                b->t_dev_lost = b->now;
-            }
-            break;
-        default:
-            break;
+    switch (ev) {
+    case GC_LE_UP_FRESH:
+        blog(b, "device link up");
+        fifo_clear(&b->to_dev);
+        b->dev_lost_pending = 0;
+        send_status(b);
+        break;
+    case GC_LE_UP_RESUMED:
+        blog(b, "device link resumed");
+        b->dev_lost_pending = 0;
+        fifo_drain(b, &b->to_dev, &b->dev);
+        break;
+    case GC_LE_DOWN:
+    case GC_LE_CLOSED:
+        blog(b, "device link %s (%d)", ev == GC_LE_DOWN ? "down" : "closed", reason);
+        if (!b->dev_lost_pending) {
+            b->dev_lost_pending = 1;
+            b->t_dev_lost = b->now;
+        }
+        break;
+    default:
+        break;
     }
 }
 
@@ -296,8 +272,7 @@ static void dev_hello_cb(void *ctx, const gc_hello *h)
 static void srv_write_cb(void *ctx, const gc_u8 *d, size_t n)
 {
     bridge *b = (bridge *)ctx;
-    if (b->io.srv_write && b->srv_state != GC_BS_DOWN)
-    {
+    if (b->io.srv_write && b->srv_state != GC_BS_DOWN) {
         b->io.srv_write(b->ctx, d, n);
     }
 }
@@ -313,20 +288,16 @@ static void srv_msg_cb(void *ctx, const gc_u8 *d, size_t n)
     bridge *b = (bridge *)ctx;
 
     b->st_srv_msgs++;
-    if (n == 0)
-    {
+    if (n == 0) {
         return;
     }
-    if (d[0] == GC_MT_REGISTERED && n >= 2)
-    {
+    if (d[0] == GC_MT_REGISTERED && n >= 2) {
         b->registered = ((gc_i8)d[1] == GC_R_OK);
     }
-    if (b->dev.state == GC_LS_UP && b->to_dev.count == 0 && gc_link_send(&b->dev, d, n, b->now) == GC_LINK_OK)
-    {
+    if (b->dev.state == GC_LS_UP && b->to_dev.count == 0 && gc_link_send(&b->dev, d, n, b->now) == GC_LINK_OK) {
         return;
     }
-    if (!fifo_push(&b->to_dev, d, n))
-    {
+    if (!fifo_push(&b->to_dev, d, n)) {
         blog(b, "device queue full, dropping %s", gc_msg_name(d[0])); /* cannot happen: can_accept */
     }
 }
@@ -334,50 +305,46 @@ static void srv_msg_cb(void *ctx, const gc_u8 *d, size_t n)
 static void srv_state_cb(void *ctx, int ev, int reason)
 {
     bridge *b = (bridge *)ctx;
-    switch (ev)
-    {
-        case GC_LE_UP_FRESH:
-            blog(b, "server link up (fresh)");
-            b->backoff = b->cfg.reconnect_min_ms;
-            set_srv_state(b, GC_BS_UP);
-            b->registered = 0;
-            /* everything the server knew about us is gone: replay the
-             * registration; the DLL sees the unsolicited REGISTERED and
-             * knows that any session state was lost */
-            fifo_clear(&b->to_srv);
-            if (b->reg_len && b->dev.state == GC_LS_UP)
-            {
-                gc_link_send(&b->srv, b->reg_msg, b->reg_len, b->now);
-            }
-            b->srv_ever_up = 1;
-            break;
-        case GC_LE_UP_RESUMED:
-            blog(b, "server link resumed");
-            b->backoff = b->cfg.reconnect_min_ms;
-            set_srv_state(b, GC_BS_UP);
-            fifo_drain(b, &b->to_srv, &b->srv);
-            break;
-        case GC_LE_DOWN:
-            blog(b, "server link down (%d)", reason);
-            if (b->io.srv_disconnect)
-            {
-                b->io.srv_disconnect(b->ctx);
-            }
-            set_srv_state(b, GC_BS_CONNECTING);
-            b->t_reconnect = b->now + b->backoff;
-            break;
-        case GC_LE_CLOSED:
-            blog(b, "server link closed (%d)", reason);
-            if (b->io.srv_disconnect)
-            {
-                b->io.srv_disconnect(b->ctx);
-            }
-            fifo_clear(&b->to_srv);
-            set_srv_state(b, GC_BS_CONNECTING);
-            b->t_reconnect = b->now + b->backoff;
-            break;
-        default:
-            break;
+    switch (ev) {
+    case GC_LE_UP_FRESH:
+        blog(b, "server link up (fresh)");
+        b->backoff = b->cfg.reconnect_min_ms;
+        set_srv_state(b, GC_BS_UP);
+        b->registered = 0;
+        /* everything the server knew about us is gone: replay the
+         * registration; the DLL sees the unsolicited REGISTERED and
+         * knows that any session state was lost */
+        fifo_clear(&b->to_srv);
+        if (b->reg_len && b->dev.state == GC_LS_UP) {
+            gc_link_send(&b->srv, b->reg_msg, b->reg_len, b->now);
+        }
+        b->srv_ever_up = 1;
+        break;
+    case GC_LE_UP_RESUMED:
+        blog(b, "server link resumed");
+        b->backoff = b->cfg.reconnect_min_ms;
+        set_srv_state(b, GC_BS_UP);
+        fifo_drain(b, &b->to_srv, &b->srv);
+        break;
+    case GC_LE_DOWN:
+        blog(b, "server link down (%d)", reason);
+        if (b->io.srv_disconnect) {
+            b->io.srv_disconnect(b->ctx);
+        }
+        set_srv_state(b, GC_BS_CONNECTING);
+        b->t_reconnect = b->now + b->backoff;
+        break;
+    case GC_LE_CLOSED:
+        blog(b, "server link closed (%d)", reason);
+        if (b->io.srv_disconnect) {
+            b->io.srv_disconnect(b->ctx);
+        }
+        fifo_clear(&b->to_srv);
+        set_srv_state(b, GC_BS_CONNECTING);
+        b->t_reconnect = b->now + b->backoff;
+        break;
+    default:
+        break;
     }
 }
 
@@ -430,8 +397,7 @@ void bridge_dev_connected(bridge *b, const gc_u8 *bt_addr, gc_u32 now)
 {
     b->now = now;
     b->dev_connected = 1;
-    if (bt_addr)
-    {
+    if (bt_addr) {
         memcpy(b->dev_addr, bt_addr, GC_DEVICE_ID_LEN);
     }
     blog(b, "device connected %02X:%02X:%02X:%02X:%02X:%02X", b->dev_addr[0], b->dev_addr[1], b->dev_addr[2],
@@ -452,8 +418,7 @@ void bridge_dev_disconnected(bridge *b, gc_u32 now)
     b->dev_connected = 0;
     blog(b, "device disconnected");
     gc_link_transport_lost(&b->dev, now);
-    if (!b->dev_lost_pending)
-    {
+    if (!b->dev_lost_pending) {
         b->dev_lost_pending = 1;
         b->t_dev_lost = now;
     }
@@ -463,21 +428,16 @@ void bridge_set_wifi(bridge *b, int up, gc_i8 rssi, gc_u32 now)
 {
     b->now = now;
     b->rssi = rssi;
-    if (up == b->wifi_up)
-    {
+    if (up == b->wifi_up) {
         return;
     }
     b->wifi_up = up;
     blog(b, "wifi %s", up ? "up" : "down");
-    if (up)
-    {
+    if (up) {
         b->t_reconnect = now;
         set_srv_state(b, GC_BS_CONNECTING);
-    }
-    else
-    {
-        if (b->io.srv_disconnect)
-        {
+    } else {
+        if (b->io.srv_disconnect) {
             b->io.srv_disconnect(b->ctx);
         }
         gc_link_transport_lost(&b->srv, now);
@@ -504,8 +464,7 @@ void bridge_srv_disconnected(bridge *b, gc_u32 now)
 {
     b->now = now;
     gc_link_transport_lost(&b->srv, now);
-    if (b->srv_state != GC_BS_DOWN || b->wifi_up)
-    {
+    if (b->srv_state != GC_BS_DOWN || b->wifi_up) {
         set_srv_state(b, b->wifi_up ? GC_BS_CONNECTING : GC_BS_DOWN);
     }
     b->t_reconnect = now + b->backoff;
@@ -520,36 +479,31 @@ void bridge_poll(bridge *b, gc_u32 now)
 
     /* (re)connect to the server */
     if (b->wifi_up && b->srv.state != GC_LS_UP && b->srv.state != GC_LS_HELLO_SENT &&
-        !GC_TIME_BEFORE(now, b->t_reconnect))
-    {
+        !GC_TIME_BEFORE(now, b->t_reconnect)) {
         b->t_reconnect = now + b->backoff;
         b->backoff = b->backoff * 2 > b->cfg.reconnect_max_ms ? b->cfg.reconnect_max_ms : b->backoff * 2;
         set_srv_state(b, GC_BS_CONNECTING);
-        if (b->io.srv_connect)
-        {
+        if (b->io.srv_connect) {
             b->io.srv_connect(b->ctx);
         }
     }
     /* a resumable server session that never comes back is abandoned */
     if (b->srv_state == GC_BS_CONNECTING && !b->wifi_up && b->srv.has_session &&
-        (gc_u32)(now - b->srv.t_last_rx) > 60000)
-    {
+        (gc_u32)(now - b->srv.t_last_rx) > 60000) {
         gc_link_forget(&b->srv);
         fifo_clear(&b->to_srv);
         set_srv_state(b, GC_BS_DOWN);
     }
 
     /* device gone for good: release its server side state */
-    if (b->dev_lost_pending && b->dev.state != GC_LS_UP && (gc_u32)(now - b->t_dev_lost) >= b->cfg.device_grace_ms)
-    {
+    if (b->dev_lost_pending && b->dev.state != GC_LS_UP && (gc_u32)(now - b->t_dev_lost) >= b->cfg.device_grace_ms) {
         b->dev_lost_pending = 0;
         blog(b, "device did not come back, leaving session");
         fifo_clear(&b->to_dev);
         gc_link_forget(&b->dev);
-        if (b->reg_len && b->srv.state == GC_LS_UP)
-        {
+        if (b->reg_len && b->srv.state == GC_LS_UP) {
             gc_msg m;
-            gc_u8  buf[8];
+            gc_u8 buf[8];
             size_t n;
             memset(&m, 0, sizeof(m));
             m.type = GC_MT_LEAVE;

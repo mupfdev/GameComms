@@ -1,79 +1,76 @@
 /* Copyright (c) 2002, Nokia. All rights reserved */
 
-#include <bt_sock.h>
 #include "MessageServiceSearcher.h"
 #include "BTServiceSearcher.pan"
 #include "MessageProtocolConstants.h"
+#include <bt_sock.h>
 
-static const TSdpAttributeParser::SSdpAttributeNode gSerialPortProtocolArray[] = 
-    {
-        { TSdpAttributeParser::ECheckType, ETypeDES },
-            { TSdpAttributeParser::ECheckType, ETypeDES },
-                { TSdpAttributeParser::ECheckValue, ETypeUUID, KL2CAP },
-            { TSdpAttributeParser::ECheckEnd },
-            { TSdpAttributeParser::ECheckType, ETypeDES },
-                { TSdpAttributeParser::ECheckValue, ETypeUUID, KRFCOMM },
-                { TSdpAttributeParser::EReadValue, ETypeUint, KRfcommChannel },
-            { TSdpAttributeParser::ECheckEnd },
-        { TSdpAttributeParser::ECheckEnd },
+static const TSdpAttributeParser::SSdpAttributeNode gSerialPortProtocolArray[] = {
+    { TSdpAttributeParser::ECheckType, ETypeDES },
+    { TSdpAttributeParser::ECheckType, ETypeDES },
+    { TSdpAttributeParser::ECheckValue, ETypeUUID, KL2CAP },
+    { TSdpAttributeParser::ECheckEnd },
+    { TSdpAttributeParser::ECheckType, ETypeDES },
+    { TSdpAttributeParser::ECheckValue, ETypeUUID, KRFCOMM },
+    { TSdpAttributeParser::EReadValue, ETypeUint, KRfcommChannel },
+    { TSdpAttributeParser::ECheckEnd },
+    { TSdpAttributeParser::ECheckEnd },
     { TSdpAttributeParser::EFinished }
-    };
-
+};
 
 static const TStaticArrayC<TSdpAttributeParser::SSdpAttributeNode> gSerialPortProtocolList =
     CONSTRUCT_STATIC_ARRAY_C(
-        gSerialPortProtocolArray
-    );
+        gSerialPortProtocolArray);
 
-CMessageServiceSearcher* CMessageServiceSearcher::NewL()
-    {
-    CMessageServiceSearcher* self = CMessageServiceSearcher::NewLC();
+CMessageServiceSearcher *CMessageServiceSearcher::NewL()
+{
+    CMessageServiceSearcher *self = CMessageServiceSearcher::NewLC();
     CleanupStack::Pop(self);
     return self;
-    }
-    
-CMessageServiceSearcher* CMessageServiceSearcher::NewLC()
-    {
-    CMessageServiceSearcher* self = new (ELeave) CMessageServiceSearcher();
+}
+
+CMessageServiceSearcher *CMessageServiceSearcher::NewLC()
+{
+    CMessageServiceSearcher *self = new (ELeave) CMessageServiceSearcher();
     CleanupStack::PushL(self);
     self->ConstructL();
     return self;
-    }
+}
 
 CMessageServiceSearcher::CMessageServiceSearcher()
-: CBTServiceSearcher(),
-  iServiceClass(KServiceClass),
-  iPort(-1)
-    {
-    }
+    : CBTServiceSearcher(),
+      iServiceClass(KServiceClass),
+      iPort(-1)
+{
+}
 
 CMessageServiceSearcher::~CMessageServiceSearcher()
-    {
+{
     // no implementation required
-    }
+}
 
 void CMessageServiceSearcher::ConstructL()
-    {
+{
     // no implementation required
-    }
+}
 
-const TUUID& CMessageServiceSearcher::ServiceClass() const
-    {
+const TUUID &CMessageServiceSearcher::ServiceClass() const
+{
     return iServiceClass;
-    }
+}
 
-const TSdpAttributeParser::TSdpAttributeList& CMessageServiceSearcher::ProtocolList() const
-    {
+const TSdpAttributeParser::TSdpAttributeList &CMessageServiceSearcher::ProtocolList() const
+{
     return gSerialPortProtocolList;
-    }
+}
 
-void CMessageServiceSearcher::FoundElementL(TInt aKey, CSdpAttrValue& aValue)
-    {
+void CMessageServiceSearcher::FoundElementL(TInt aKey, CSdpAttrValue &aValue)
+{
     __ASSERT_ALWAYS(aKey == static_cast<TInt>(KRfcommChannel), Panic(EBTServiceSearcherProtocolRead));
     iPort = aValue.Uint();
-    }
+}
 
 TInt CMessageServiceSearcher::Port()
-    {
+{
     return iPort;
-    }
+}

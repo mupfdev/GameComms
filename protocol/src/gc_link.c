@@ -8,8 +8,8 @@
  *
  **/
 
-#include <string.h>
 #include "gc_link.h"
+#include <string.h>
 
 #define SEQ_DIFF(a, b) ((gc_i16)((gc_u16)(a) - (gc_u16)(b)))
 
@@ -56,8 +56,7 @@ static void link_tx_frame(gc_link *l, gc_u8 type, gc_u16 seq, const gc_u8 *paylo
     gc_u8 *body = l->scratch;
     size_t n;
 
-    if (plen > GC_LINK_MAX_MSG)
-    {
+    if (plen > GC_LINK_MAX_MSG) {
         return;
     }
     body[0] = type;
@@ -66,13 +65,11 @@ static void link_tx_frame(gc_link *l, gc_u8 type, gc_u16 seq, const gc_u8 *paylo
     body[3] = (gc_u8)(seq & 0xFF);
     body[4] = (gc_u8)(l->rx_next >> 8);
     body[5] = (gc_u8)(l->rx_next & 0xFF);
-    if (plen)
-    {
+    if (plen) {
         gc_memmove(body + GC_LINK_HDR_LEN, payload, plen);
     }
     n = gc_frame_encode(body, GC_LINK_HDR_LEN + plen, l->txbuf, sizeof(l->txbuf));
-    if (n && l->ops.write)
-    {
+    if (n && l->ops.write) {
         l->ops.write(l->ctx, l->txbuf, n);
     }
     l->t_last_tx = now;
@@ -81,7 +78,7 @@ static void link_tx_frame(gc_link *l, gc_u8 type, gc_u16 seq, const gc_u8 *paylo
 
 static void link_tx_hello(gc_link *l, gc_u8 type, gc_u8 vmin, gc_u8 vmax, int resumed, gc_u32 now)
 {
-    gc_u8     p[16];
+    gc_u8 p[16];
     gc_writer w;
 
     gc_w_init(&w, p, sizeof(p));
@@ -94,8 +91,7 @@ static void link_tx_hello(gc_link *l, gc_u8 type, gc_u8 vmin, gc_u8 vmax, int re
     gc_w_u16(&w, l->rx_next);
     gc_w_u16(&w, (gc_u16)GC_LINK_MAX_MSG);
     gc_w_u8(&w, (gc_u8)GC_LINK_QUEUE);
-    if (type == GC_FT_HELLO_ACK)
-    {
+    if (type == GC_FT_HELLO_ACK) {
         gc_w_u8(&w, (gc_u8)(resumed ? 1 : 0));
     }
     link_tx_frame(l, type, 0, p, w.len, now);
@@ -109,16 +105,13 @@ static gc_link_slot *link_slot(gc_link *l, gc_u16 i)
 /* transmit everything queued but not yet sent */
 static void link_flush(gc_link *l, gc_u32 now)
 {
-    if (l->state != GC_LS_UP)
-    {
+    if (l->state != GC_LS_UP) {
         return;
     }
-    while (l->q_sent < l->q_count)
-    {
+    while (l->q_sent < l->q_count) {
         gc_link_slot *s = link_slot(l, l->q_sent);
         link_tx_frame(l, GC_FT_DATA, s->seq, s->data, s->len, now);
-        if (l->q_sent == 0)
-        {
+        if (l->q_sent == 0) {
             l->t_retx = now + l->rto_cur;
         }
         l->q_sent++;
@@ -131,8 +124,7 @@ static void link_retransmit(gc_link *l, gc_u32 now)
 {
     gc_u16 i;
 
-    for (i = 0; i < l->q_sent; i++)
-    {
+    for (i = 0; i < l->q_sent; i++) {
         gc_link_slot *s = link_slot(l, i);
         link_tx_frame(l, GC_FT_DATA, s->seq, s->data, s->len, now);
         l->st_retx++;
@@ -146,8 +138,7 @@ static void link_retransmit(gc_link *l, gc_u32 now)
 
 static void link_notify(gc_link *l, int ev, int reason)
 {
-    if (l->ops.on_state)
-    {
+    if (l->ops.on_state) {
         l->ops.on_state(l->ctx, ev, reason);
     }
 }
@@ -174,8 +165,7 @@ void gc_link_forget(gc_link *l)
 static void link_go_down(gc_link *l, int reason, gc_u32 now)
 {
     (void)now;
-    if (l->state == GC_LS_DOWN || l->state == GC_LS_CLOSED || l->state == GC_LS_IDLE)
-    {
+    if (l->state == GC_LS_DOWN || l->state == GC_LS_CLOSED || l->state == GC_LS_IDLE) {
         return;
     }
     l->state = GC_LS_DOWN;
@@ -191,8 +181,7 @@ static void link_go_closed(gc_link *l, int reason)
     l->state = GC_LS_CLOSED;
     gc_link_forget(l);
     gc_deframer_reset(&l->rx);
-    if (was != GC_LS_CLOSED && was != GC_LS_IDLE)
-    {
+    if (was != GC_LS_CLOSED && was != GC_LS_IDLE) {
         link_notify(l, GC_LE_CLOSED, reason);
     }
 }
@@ -202,11 +191,9 @@ static void link_process_ack(gc_link *l, gc_u16 ack, gc_u32 now)
 {
     int progressed = 0;
 
-    while (l->q_sent > 0)
-    {
+    while (l->q_sent > 0) {
         gc_link_slot *s = link_slot(l, 0);
-        if (SEQ_DIFF(ack, s->seq) <= 0)
-        {
+        if (SEQ_DIFF(ack, s->seq) <= 0) {
             break;
         }
         l->q_head = (gc_u16)((l->q_head + 1) % GC_LINK_QUEUE);
@@ -214,8 +201,7 @@ static void link_process_ack(gc_link *l, gc_u16 ack, gc_u32 now)
         l->q_sent--;
         progressed = 1;
     }
-    if (progressed)
-    {
+    if (progressed) {
         l->retries = 0;
         l->rto_cur = l->cfg.rto_ms;
         l->t_retx = now + l->rto_cur;
@@ -238,8 +224,7 @@ int gc_link_parse_hello(const gc_u8 *p, size_t len, gc_hello *h)
     gc_reader r;
 
     gc_r_init(&r, p, len);
-    if (gc_r_u8(&r) != GC_LINK_MAGIC_0 || gc_r_u8(&r) != GC_LINK_MAGIC_1)
-    {
+    if (gc_r_u8(&r) != GC_LINK_MAGIC_0 || gc_r_u8(&r) != GC_LINK_MAGIC_1) {
         return 0;
     }
     h->ver_min = gc_r_u8(&r);
@@ -249,8 +234,7 @@ int gc_link_parse_hello(const gc_u8 *p, size_t len, gc_hello *h)
     h->rx_next = gc_r_u16(&r);
     h->max_msg = gc_r_u16(&r);
     h->window = gc_r_u8(&r);
-    if (r.error || h->ver_min > h->ver_max)
-    {
+    if (r.error || h->ver_min > h->ver_max) {
         return 0;
     }
     return 1;
@@ -258,8 +242,7 @@ int gc_link_parse_hello(const gc_u8 *p, size_t len, gc_hello *h)
 
 void gc_link_start(gc_link *l, gc_u32 link_id, gc_u32 now)
 {
-    if (!l->has_session || link_id != l->link_id)
-    {
+    if (!l->has_session || link_id != l->link_id) {
         link_reset_session(l);
         l->link_id = link_id;
         l->has_session = 0;
@@ -281,16 +264,14 @@ void gc_link_listen(gc_link *l, gc_u32 now)
 void gc_link_accept(gc_link *l, const gc_hello *h, int resume, gc_u32 now)
 {
     gc_u8 ver = h->ver_max < GC_PROTO_VERSION_MAX ? h->ver_max : GC_PROTO_VERSION_MAX;
-    int   resumed;
+    int resumed;
 
-    if (ver < GC_PROTO_VERSION_MIN || ver < h->ver_min)
-    {
+    if (ver < GC_PROTO_VERSION_MIN || ver < h->ver_min) {
         gc_link_reject(l, GC_LR_VERSION);
         return;
     }
     resumed = resume && l->has_session && h->link_id == l->link_id;
-    if (!resumed)
-    {
+    if (!resumed) {
         link_reset_session(l);
         l->link_id = h->link_id;
         l->has_session = 1;
@@ -300,14 +281,11 @@ void gc_link_accept(gc_link *l, const gc_hello *h, int resume, gc_u32 now)
     l->state = GC_LS_UP;
     l->t_last_rx = now;
     link_tx_hello(l, GC_FT_HELLO_ACK, ver, ver, resumed, now);
-    if (resumed)
-    {
+    if (resumed) {
         l->st_resumes++;
         link_notify(l, GC_LE_UP_RESUMED, 0);
         link_resume_tx(l, h->rx_next, now);
-    }
-    else
-    {
+    } else {
         link_notify(l, GC_LE_UP_FRESH, 0);
         link_flush(l, now);
     }
@@ -322,20 +300,16 @@ void gc_link_reject(gc_link *l, gc_u8 reason)
 
 void gc_link_transport_lost(gc_link *l, gc_u32 now)
 {
-    if (l->state == GC_LS_UP)
-    {
+    if (l->state == GC_LS_UP) {
         link_go_down(l, GC_LR_TRANSPORT, now);
-    }
-    else if (l->state == GC_LS_HELLO_SENT || l->state == GC_LS_WAIT_HELLO)
-    {
+    } else if (l->state == GC_LS_HELLO_SENT || l->state == GC_LS_WAIT_HELLO) {
         l->state = l->has_session ? GC_LS_DOWN : GC_LS_IDLE;
     }
 }
 
 void gc_link_close(gc_link *l, gc_u8 reason)
 {
-    if (l->state == GC_LS_UP)
-    {
+    if (l->state == GC_LS_UP) {
         link_tx_frame(l, GC_FT_CLOSE, 0, &reason, 1, l->t_last_tx);
     }
     link_go_closed(l, GC_LR_LOCAL);
@@ -345,17 +319,14 @@ int gc_link_send(gc_link *l, const gc_u8 *msg, size_t len, gc_u32 now)
 {
     gc_link_slot *s;
 
-    if (len > GC_LINK_MAX_MSG)
-    {
+    if (len > GC_LINK_MAX_MSG) {
         return GC_LINK_E_TOOBIG;
     }
     if (!(l->state == GC_LS_UP || (l->state == GC_LS_DOWN && l->has_session) ||
-          (l->state == GC_LS_HELLO_SENT && l->has_session)))
-    {
+          (l->state == GC_LS_HELLO_SENT && l->has_session))) {
         return GC_LINK_E_STATE;
     }
-    if (l->q_count >= GC_LINK_QUEUE)
-    {
+    if (l->q_count >= GC_LINK_QUEUE) {
         return GC_LINK_E_FULL;
     }
     s = link_slot(l, l->q_count);
@@ -373,15 +344,14 @@ int gc_link_send(gc_link *l, const gc_u8 *msg, size_t len, gc_u32 now)
 
 static void link_handle_frame(gc_link *l, const gc_u8 *body, size_t len, gc_u32 now)
 {
-    gc_u8        type;
-    gc_u16       seq;
-    gc_u16       ack;
+    gc_u8 type;
+    gc_u16 seq;
+    gc_u16 ack;
     const gc_u8 *p;
-    size_t       plen;
-    gc_hello     h;
+    size_t plen;
+    gc_hello h;
 
-    if (len < GC_LINK_HDR_LEN)
-    {
+    if (len < GC_LINK_HDR_LEN) {
         return;
     }
     type = body[0];
@@ -391,128 +361,105 @@ static void link_handle_frame(gc_link *l, const gc_u8 *body, size_t len, gc_u32 
     plen = len - GC_LINK_HDR_LEN;
     l->t_last_rx = now;
 
-    switch (type)
-    {
-        case GC_FT_HELLO:
-            if (l->cfg.initiator)
-            {
-                return; /* two initiators: ignore */
-            }
-            if (!gc_link_parse_hello(p, plen, &h))
-            {
-                gc_link_reject(l, GC_LR_BAD_HELLO);
-                return;
-            }
-            if (l->state == GC_LS_UP && h.link_id == l->link_id)
-            {
-                /* duplicate HELLO (our ACK was lost): answer again */
-                gc_link_accept(l, &h, 1, now);
-                return;
-            }
-            if (l->ops.on_hello)
-            {
-                l->ops.on_hello(l->ctx, &h);
-            }
-            else
-            {
-                gc_link_accept(l, &h, 1, now);
-            }
-            return;
-
-        case GC_FT_HELLO_ACK:
-        {
-            int resumed;
-            if (!l->cfg.initiator || l->state != GC_LS_HELLO_SENT)
-            {
-                return;
-            }
-            if (!gc_link_parse_hello(p, plen, &h) || plen < 15)
-            {
-                link_go_closed(l, GC_LR_BAD_HELLO);
-                return;
-            }
-            if (h.ver_max < GC_PROTO_VERSION_MIN || h.ver_max > GC_PROTO_VERSION_MAX)
-            {
-                link_go_closed(l, GC_LR_VERSION);
-                return;
-            }
-            resumed = p[14] && l->has_session;
-            l->version = h.ver_max;
-            l->peer_role = h.role;
-            l->state = GC_LS_UP;
-            if (resumed)
-            {
-                l->st_resumes++;
-                link_notify(l, GC_LE_UP_RESUMED, 0);
-                link_resume_tx(l, h.rx_next, now);
-            }
-            else
-            {
-                link_reset_session(l);
-                l->has_session = 1;
-                link_notify(l, GC_LE_UP_FRESH, 0);
-                link_flush(l, now);
-            }
+    switch (type) {
+    case GC_FT_HELLO:
+        if (l->cfg.initiator) {
+            return; /* two initiators: ignore */
+        }
+        if (!gc_link_parse_hello(p, plen, &h)) {
+            gc_link_reject(l, GC_LR_BAD_HELLO);
             return;
         }
-
-        case GC_FT_REJECT:
-            link_go_closed(l, plen ? p[0] : GC_LR_REMOTE);
+        if (l->state == GC_LS_UP && h.link_id == l->link_id) {
+            /* duplicate HELLO (our ACK was lost): answer again */
+            gc_link_accept(l, &h, 1, now);
             return;
+        }
+        if (l->ops.on_hello) {
+            l->ops.on_hello(l->ctx, &h);
+        } else {
+            gc_link_accept(l, &h, 1, now);
+        }
+        return;
 
-        case GC_FT_CLOSE:
-            link_go_closed(l, GC_LR_REMOTE);
+    case GC_FT_HELLO_ACK:
+    {
+        int resumed;
+        if (!l->cfg.initiator || l->state != GC_LS_HELLO_SENT) {
             return;
-
-        default:
-            break;
+        }
+        if (!gc_link_parse_hello(p, plen, &h) || plen < 15) {
+            link_go_closed(l, GC_LR_BAD_HELLO);
+            return;
+        }
+        if (h.ver_max < GC_PROTO_VERSION_MIN || h.ver_max > GC_PROTO_VERSION_MAX) {
+            link_go_closed(l, GC_LR_VERSION);
+            return;
+        }
+        resumed = p[14] && l->has_session;
+        l->version = h.ver_max;
+        l->peer_role = h.role;
+        l->state = GC_LS_UP;
+        if (resumed) {
+            l->st_resumes++;
+            link_notify(l, GC_LE_UP_RESUMED, 0);
+            link_resume_tx(l, h.rx_next, now);
+        } else {
+            link_reset_session(l);
+            l->has_session = 1;
+            link_notify(l, GC_LE_UP_FRESH, 0);
+            link_flush(l, now);
+        }
+        return;
     }
 
-    if (l->state != GC_LS_UP)
-    {
+    case GC_FT_REJECT:
+        link_go_closed(l, plen ? p[0] : GC_LR_REMOTE);
+        return;
+
+    case GC_FT_CLOSE:
+        link_go_closed(l, GC_LR_REMOTE);
+        return;
+
+    default:
+        break;
+    }
+
+    if (l->state != GC_LS_UP) {
         return; /* data before handshake: ignore */
     }
 
     link_process_ack(l, ack, now);
 
-    switch (type)
+    switch (type) {
+    case GC_FT_DATA:
     {
-        case GC_FT_DATA:
-        {
-            gc_i16 d = SEQ_DIFF(seq, l->rx_next);
-            if (d == 0 && l->ops.can_accept && !l->ops.can_accept(l->ctx))
-            {
-                l->st_backpressure++; /* not acknowledged: peer retries */
+        gc_i16 d = SEQ_DIFF(seq, l->rx_next);
+        if (d == 0 && l->ops.can_accept && !l->ops.can_accept(l->ctx)) {
+            l->st_backpressure++; /* not acknowledged: peer retries */
+        } else if (d == 0) {
+            l->rx_next++;
+            l->st_rx_msgs++;
+            l->ack_pending = 1;
+            if (l->ops.on_msg) {
+                l->ops.on_msg(l->ctx, p, plen);
             }
-            else if (d == 0)
-            {
-                l->rx_next++;
-                l->st_rx_msgs++;
-                l->ack_pending = 1;
-                if (l->ops.on_msg)
-                {
-                    l->ops.on_msg(l->ctx, p, plen);
-                }
-            }
-            else if (d < 0)
-            {
-                l->st_dup++;
-                l->ack_pending = 1; /* re-acknowledge duplicates */
-            }
-            else
-            {
-                l->st_ooo++;        /* gap: wait for retransmission */
-                l->ack_pending = 1;
-            }
-            break;
+        } else if (d < 0) {
+            l->st_dup++;
+            l->ack_pending = 1; /* re-acknowledge duplicates */
+        } else {
+            l->st_ooo++; /* gap: wait for retransmission */
+            l->ack_pending = 1;
         }
-        case GC_FT_PING:
-            link_tx_frame(l, GC_FT_PONG, 0, p, plen, now);
-            break;
-        case GC_FT_ACK:
-        case GC_FT_PONG:
-        default:
-            break;
+        break;
+    }
+    case GC_FT_PING:
+        link_tx_frame(l, GC_FT_PONG, 0, p, plen, now);
+        break;
+    case GC_FT_ACK:
+    case GC_FT_PONG:
+    default:
+        break;
     }
 }
 
@@ -527,18 +474,15 @@ static void link_frame_cb(void *ctx, const gc_u8 *body, size_t len)
 
 void gc_link_input(gc_link *l, const gc_u8 *data, size_t len, gc_u32 now)
 {
-    if (l->state == GC_LS_IDLE || l->state == GC_LS_CLOSED || l->state == GC_LS_DOWN)
-    {
-        if (!(l->state == GC_LS_IDLE && !l->cfg.initiator))
-        {
+    if (l->state == GC_LS_IDLE || l->state == GC_LS_CLOSED || l->state == GC_LS_DOWN) {
+        if (!(l->state == GC_LS_IDLE && !l->cfg.initiator)) {
             return;
         }
         l->state = GC_LS_WAIT_HELLO; /* acceptor implicitly listening */
     }
     l->t_now = now;
     gc_deframer_feed(&l->rx, data, len);
-    if (l->ack_pending && l->state == GC_LS_UP)
-    {
+    if (l->ack_pending && l->state == GC_LS_UP) {
         link_tx_frame(l, GC_FT_ACK, 0, NULL, 0, now);
     }
 }
@@ -549,56 +493,48 @@ void gc_link_input(gc_link *l, const gc_u8 *data, size_t len, gc_u32 now)
 
 void gc_link_poll(gc_link *l, gc_u32 now)
 {
-    switch (l->state)
-    {
-        case GC_LS_HELLO_SENT:
-            if (!GC_TIME_BEFORE(now, l->t_hello))
-            {
-                if ((gc_u32)(now - l->t_last_rx) >= l->cfg.dead_ms)
-                {
-                    gc_link_transport_lost(l, now);
-                    link_notify(l, GC_LE_DOWN, GC_LR_TIMEOUT);
-                    return;
-                }
-                l->t_hello = now + l->cfg.hello_ms;
-                link_tx_hello(l, GC_FT_HELLO, GC_PROTO_VERSION_MIN, GC_PROTO_VERSION_MAX, 0, now);
-            }
-            return;
-
-        case GC_LS_UP:
-            if ((gc_u32)(now - l->t_last_rx) >= l->cfg.dead_ms)
-            {
-                link_go_down(l, GC_LR_TIMEOUT, now);
+    switch (l->state) {
+    case GC_LS_HELLO_SENT:
+        if (!GC_TIME_BEFORE(now, l->t_hello)) {
+            if ((gc_u32)(now - l->t_last_rx) >= l->cfg.dead_ms) {
+                gc_link_transport_lost(l, now);
+                link_notify(l, GC_LE_DOWN, GC_LR_TIMEOUT);
                 return;
             }
-            if (l->q_sent > 0 && !GC_TIME_BEFORE(now, l->t_retx))
-            {
-                l->retries++;
-                if ((gc_u32)l->retries * l->rto_cur > (gc_u32)l->cfg.dead_ms * 2)
-                {
-                    link_go_down(l, GC_LR_RETRIES, now);
-                    return;
-                }
-                l->rto_cur = (gc_u16)(l->rto_cur * 2 > l->cfg.rto_max_ms ? l->cfg.rto_max_ms : l->rto_cur * 2);
-                link_retransmit(l, now);
-            }
-            if (l->ack_pending)
-            {
-                link_tx_frame(l, GC_FT_ACK, 0, NULL, 0, now);
-            }
-            if ((gc_u32)(now - l->t_last_tx) >= l->cfg.ka_ms)
-            {
-                gc_u8 nonce[4];
-                nonce[0] = (gc_u8)(now >> 24);
-                nonce[1] = (gc_u8)(now >> 16);
-                nonce[2] = (gc_u8)(now >> 8);
-                nonce[3] = (gc_u8)now;
-                link_tx_frame(l, GC_FT_PING, 0, nonce, 4, now);
-            }
-            return;
+            l->t_hello = now + l->cfg.hello_ms;
+            link_tx_hello(l, GC_FT_HELLO, GC_PROTO_VERSION_MIN, GC_PROTO_VERSION_MAX, 0, now);
+        }
+        return;
 
-        default:
+    case GC_LS_UP:
+        if ((gc_u32)(now - l->t_last_rx) >= l->cfg.dead_ms) {
+            link_go_down(l, GC_LR_TIMEOUT, now);
             return;
+        }
+        if (l->q_sent > 0 && !GC_TIME_BEFORE(now, l->t_retx)) {
+            l->retries++;
+            if ((gc_u32)l->retries * l->rto_cur > (gc_u32)l->cfg.dead_ms * 2) {
+                link_go_down(l, GC_LR_RETRIES, now);
+                return;
+            }
+            l->rto_cur = (gc_u16)(l->rto_cur * 2 > l->cfg.rto_max_ms ? l->cfg.rto_max_ms : l->rto_cur * 2);
+            link_retransmit(l, now);
+        }
+        if (l->ack_pending) {
+            link_tx_frame(l, GC_FT_ACK, 0, NULL, 0, now);
+        }
+        if ((gc_u32)(now - l->t_last_tx) >= l->cfg.ka_ms) {
+            gc_u8 nonce[4];
+            nonce[0] = (gc_u8)(now >> 24);
+            nonce[1] = (gc_u8)(now >> 16);
+            nonce[2] = (gc_u8)(now >> 8);
+            nonce[3] = (gc_u8)now;
+            link_tx_frame(l, GC_FT_PING, 0, nonce, 4, now);
+        }
+        return;
+
+    default:
+        return;
     }
 }
 
@@ -607,26 +543,21 @@ gc_u32 gc_link_next_timeout(const gc_link *l, gc_u32 now)
     gc_u32 t = 1000;
     gc_u32 d;
 
-    if (l->state == GC_LS_HELLO_SENT)
-    {
+    if (l->state == GC_LS_HELLO_SENT) {
         d = GC_TIME_BEFORE(now, l->t_hello) ? l->t_hello - now : 0;
         return d < t ? d : t;
     }
-    if (l->state != GC_LS_UP)
-    {
+    if (l->state != GC_LS_UP) {
         return t;
     }
-    if (l->q_sent > 0)
-    {
+    if (l->q_sent > 0) {
         d = GC_TIME_BEFORE(now, l->t_retx) ? l->t_retx - now : 0;
-        if (d < t)
-        {
+        if (d < t) {
             t = d;
         }
     }
     d = (gc_u32)(now - l->t_last_tx) >= l->cfg.ka_ms ? 0 : l->cfg.ka_ms - (now - l->t_last_tx);
-    if (d < t)
-    {
+    if (d < t) {
         t = d;
     }
     return t;

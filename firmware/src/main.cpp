@@ -61,7 +61,7 @@ struct Config
 {
     String ssid;
     String pass;
-    String host;    /* "auto" = LAN discovery */
+    String host; /* "auto" = LAN discovery */
     uint16_t port;
     String key;
     String btname;
@@ -69,7 +69,7 @@ struct Config
     uint8_t verbose;
 };
 
-static Config      cfg;
+static Config cfg;
 static Preferences prefs;
 
 static void loadConfig()
@@ -105,30 +105,28 @@ static void saveConfig()
 /* ------------------------------------------------------------------ */
 
 static BluetoothSerial SerialBT;
-static WiFiClient      tcp;
-static bridge          br;
-static volatile bool   btOpened = false;
-static volatile bool   btClosed = false;
-static uint8_t         btPeer[6];
-static bool            btConnected = false;
-static bool            tcpWanted = false;
-static bool            tcpConnected = false;
-static WebServer      *web = nullptr;
-static IPAddress       discoveredIp;
-static uint16_t        discoveredPort = 0;
+static WiFiClient tcp;
+static bridge br;
+static volatile bool btOpened = false;
+static volatile bool btClosed = false;
+static uint8_t btPeer[6];
+static bool btConnected = false;
+static bool tcpWanted = false;
+static bool tcpConnected = false;
+static WebServer *web = nullptr;
+static IPAddress discoveredIp;
+static uint16_t discoveredPort = 0;
 
 static void io_dev_write(void *, const gc_u8 *d, size_t n)
 {
-    if (btConnected)
-    {
+    if (btConnected) {
         SerialBT.write(d, n);
     }
 }
 
 static void io_srv_write(void *, const gc_u8 *d, size_t n)
 {
-    if (tcpConnected && tcp.connected())
-    {
+    if (tcpConnected && tcp.connected()) {
         tcp.write(d, n);
     }
 }
@@ -141,8 +139,7 @@ static void io_srv_connect(void *)
 static void io_srv_disconnect(void *)
 {
     tcpWanted = false;
-    if (tcpConnected)
-    {
+    if (tcpConnected) {
         tcp.stop();
         tcpConnected = false;
     }
@@ -150,8 +147,7 @@ static void io_srv_disconnect(void *)
 
 static void io_log(void *, const char *line)
 {
-    if (cfg.verbose)
-    {
+    if (cfg.verbose) {
         Serial.printf("[%8lu] %s\n", (unsigned long)millis(), line);
     }
 }
@@ -159,13 +155,10 @@ static void io_log(void *, const char *line)
 /* SPP events arrive on the Bluetooth task: only set flags here */
 static void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 {
-    if (event == ESP_SPP_SRV_OPEN_EVT)
-    {
+    if (event == ESP_SPP_SRV_OPEN_EVT) {
         memcpy(btPeer, param->srv_open.rem_bda, 6);
         btOpened = true;
-    }
-    else if (event == ESP_SPP_CLOSE_EVT)
-    {
+    } else if (event == ESP_SPP_CLOSE_EVT) {
         btClosed = true;
     }
 }
@@ -177,31 +170,26 @@ static void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 static bool discoverServer()
 {
     WiFiUDP udp;
-    if (!udp.begin(0))
-    {
+    if (!udp.begin(0)) {
         return false;
     }
     IPAddress bcast = WiFi.localIP();
     bcast[3] = 255;
     IPAddress mask = WiFi.subnetMask();
-    for (int i = 0; i < 4; i++)
-    {
+    for (int i = 0; i < 4; i++) {
         bcast[i] = (WiFi.localIP()[i] & mask[i]) | (~mask[i] & 0xFF);
     }
     udp.beginPacket(bcast, DISCOVERY_PORT);
     udp.print("GCDISCOVER1");
     udp.endPacket();
     uint32_t t0 = millis();
-    while (millis() - t0 < 800)
-    {
+    while (millis() - t0 < 800) {
         int n = udp.parsePacket();
-        if (n > 0)
-        {
-            char buf[96] = {0};
+        if (n > 0) {
+            char buf[96] = { 0 };
             udp.read(buf, sizeof(buf) - 1);
             int port = 0;
-            if (sscanf(buf, "GCSERVER1 %d", &port) == 1 && port > 0)
-            {
+            if (sscanf(buf, "GCSERVER1 %d", &port) == 1 && port > 0) {
                 discoveredIp = udp.remoteIP();
                 discoveredPort = (uint16_t)port;
                 udp.stop();
@@ -219,21 +207,16 @@ static void tryConnectServer()
 {
     bool ok;
     tcpWanted = false;
-    if (cfg.host == "auto" || cfg.host.length() == 0)
-    {
-        if (!discoverServer())
-        {
+    if (cfg.host == "auto" || cfg.host.length() == 0) {
+        if (!discoverServer()) {
             bridge_srv_disconnected(&br, millis());
             return;
         }
         ok = tcp.connect(discoveredIp, discoveredPort, 3000);
-    }
-    else
-    {
+    } else {
         ok = tcp.connect(cfg.host.c_str(), cfg.port, 3000);
     }
-    if (!ok)
-    {
+    if (!ok) {
         bridge_srv_disconnected(&br, millis());
         return;
     }
@@ -249,14 +232,19 @@ static void tryConnectServer()
 static String htmlEscape(const String &s)
 {
     String o;
-    for (size_t i = 0; i < s.length(); i++)
-    {
+    for (size_t i = 0; i < s.length(); i++) {
         char c = s[i];
-        if (c == '<') o += "&lt;";
-        else if (c == '>') o += "&gt;";
-        else if (c == '"') o += "&quot;";
-        else if (c == '&') o += "&amp;";
-        else o += c;
+        if (c == '<') {
+            o += "&lt;";
+        } else if (c == '>') {
+            o += "&gt;";
+        } else if (c == '"') {
+            o += "&quot;";
+        } else if (c == '&') {
+            o += "&amp;";
+        } else {
+            o += c;
+        }
     }
     return o;
 }
@@ -280,13 +268,27 @@ static void webRoot()
 
 static void webSave()
 {
-    if (web->hasArg("ssid")) cfg.ssid = web->arg("ssid");
-    if (web->hasArg("pass") && web->arg("pass").length()) cfg.pass = web->arg("pass");
-    if (web->hasArg("host")) cfg.host = web->arg("host");
-    if (web->hasArg("port")) cfg.port = (uint16_t)web->arg("port").toInt();
-    if (web->hasArg("key")) cfg.key = web->arg("key");
-    if (web->hasArg("btname") && web->arg("btname").length()) cfg.btname = web->arg("btname");
-    if (web->hasArg("pin") && web->arg("pin").length()) cfg.pin = web->arg("pin");
+    if (web->hasArg("ssid")) {
+        cfg.ssid = web->arg("ssid");
+    }
+    if (web->hasArg("pass") && web->arg("pass").length()) {
+        cfg.pass = web->arg("pass");
+    }
+    if (web->hasArg("host")) {
+        cfg.host = web->arg("host");
+    }
+    if (web->hasArg("port")) {
+        cfg.port = (uint16_t)web->arg("port").toInt();
+    }
+    if (web->hasArg("key")) {
+        cfg.key = web->arg("key");
+    }
+    if (web->hasArg("btname") && web->arg("btname").length()) {
+        cfg.btname = web->arg("btname");
+    }
+    if (web->hasArg("pin") && web->arg("pin").length()) {
+        cfg.pin = web->arg("pin");
+    }
     saveConfig();
     web->send(200, "text/html", "Saved. Rebooting...");
     delay(500);
@@ -320,65 +322,58 @@ static void printStatus()
 static void handleCommand(String line)
 {
     line.trim();
-    if (line.length() == 0)
-    {
+    if (line.length() == 0) {
         return;
     }
-    int    sp = line.indexOf(' ');
+    int sp = line.indexOf(' ');
     String cmd = sp < 0 ? line : line.substring(0, sp);
     String rest = sp < 0 ? "" : line.substring(sp + 1);
-    if (cmd == "help")
-    {
+    if (cmd == "help") {
         Serial.println("commands: status | show | set <ssid|pass|host|port|key|btname|pin|verbose> <value> | save | reboot | setup | factory");
-    }
-    else if (cmd == "status")
-    {
+    } else if (cmd == "status") {
         printStatus();
-    }
-    else if (cmd == "show")
-    {
+    } else if (cmd == "show") {
         Serial.printf("ssid=%s\nhost=%s\nport=%u\nkey=%s\nbtname=%s\npin=%s\nverbose=%u\n", cfg.ssid.c_str(),
                       cfg.host.c_str(), cfg.port, cfg.key.length() ? "(set)" : "", cfg.btname.c_str(),
                       cfg.pin.c_str(), cfg.verbose);
-    }
-    else if (cmd == "set")
-    {
-        int    sp2 = rest.indexOf(' ');
+    } else if (cmd == "set") {
+        int sp2 = rest.indexOf(' ');
         String k = sp2 < 0 ? rest : rest.substring(0, sp2);
         String v = sp2 < 0 ? "" : rest.substring(sp2 + 1);
-        if (k == "ssid") cfg.ssid = v;
-        else if (k == "pass") cfg.pass = v;
-        else if (k == "host") cfg.host = v;
-        else if (k == "port") cfg.port = (uint16_t)v.toInt();
-        else if (k == "key") cfg.key = v;
-        else if (k == "btname") cfg.btname = v;
-        else if (k == "pin") cfg.pin = v;
-        else if (k == "verbose") cfg.verbose = (uint8_t)v.toInt();
-        else { Serial.println("unknown key"); return; }
+        if (k == "ssid") {
+            cfg.ssid = v;
+        } else if (k == "pass") {
+            cfg.pass = v;
+        } else if (k == "host") {
+            cfg.host = v;
+        } else if (k == "port") {
+            cfg.port = (uint16_t)v.toInt();
+        } else if (k == "key") {
+            cfg.key = v;
+        } else if (k == "btname") {
+            cfg.btname = v;
+        } else if (k == "pin") {
+            cfg.pin = v;
+        } else if (k == "verbose") {
+            cfg.verbose = (uint8_t)v.toInt();
+        } else {
+            Serial.println("unknown key");
+            return;
+        }
         Serial.println("ok (use 'save' and 'reboot' to apply)");
-    }
-    else if (cmd == "save")
-    {
+    } else if (cmd == "save") {
         saveConfig();
         Serial.println("saved");
-    }
-    else if (cmd == "reboot")
-    {
+    } else if (cmd == "reboot") {
         ESP.restart();
-    }
-    else if (cmd == "setup")
-    {
+    } else if (cmd == "setup") {
         restartIntoSetup();
-    }
-    else if (cmd == "factory")
-    {
+    } else if (cmd == "factory") {
         prefs.begin("gcbridge", false);
         prefs.clear();
         prefs.end();
         ESP.restart();
-    }
-    else
-    {
+    } else {
         Serial.println("unknown command, try 'help'");
     }
 }
@@ -398,7 +393,7 @@ void setup()
     Serial.printf("\nGameComms bridge %s\n", BRIDGE_VERSION);
 
     bridge_cfg bc;
-    bridge_io  io;
+    bridge_io io;
     bridge_default_cfg(&bc);
     bc.server_link_id = esp_random() | 1;
     strncpy(bc.access_key, cfg.key.c_str(), GC_MAX_NAME);
@@ -416,8 +411,7 @@ void setup()
     SerialBT.disableSSP();
 #endif
     SerialBT.register_callback(sppCallback);
-    if (!SerialBT.begin(cfg.btname))
-    {
+    if (!SerialBT.begin(cfg.btname)) {
         Serial.println("Bluetooth init failed");
     }
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
@@ -425,14 +419,12 @@ void setup()
 #else
     bool pinOk = SerialBT.setPin(cfg.pin.c_str());
 #endif
-    if (!pinOk)
-    {
+    if (!pinOk) {
         Serial.println("Bluetooth PIN could not be set");
     }
     Serial.printf("Bluetooth SPP '%s' ready\n", cfg.btname.c_str());
 
-    if (cfg.ssid.length() == 0 || setupMode)
-    {
+    if (cfg.ssid.length() == 0 || setupMode) {
         setupMode = true;
         WiFi.mode(WIFI_AP);
         WiFi.softAP("GameCommsBridge-Setup");
@@ -443,9 +435,7 @@ void setup()
         web->begin();
         Serial.println("Setup mode: join 'GameCommsBridge-Setup' and open http://192.168.4.1/");
         Serial.println("or use the console: set ssid <name> / set pass <pw> / save / reboot");
-    }
-    else
-    {
+    } else {
         WiFi.mode(WIFI_STA);
         /* Modem sleep must stay on: with Bluetooth running, the Wi-Fi driver
            aborts if it is disabled (WiFi.setSleep(false)). */
@@ -457,111 +447,88 @@ void setup()
 
 void loop()
 {
-    static String   cmdline;
+    static String cmdline;
     static uint32_t lastLed = 0;
-    uint32_t        now = millis();
+    uint32_t now = millis();
 
     /* console */
-    while (Serial.available())
-    {
+    while (Serial.available()) {
         char c = (char)Serial.read();
-        if (c == '\n' || c == '\r')
-        {
+        if (c == '\n' || c == '\r') {
             handleCommand(cmdline);
             cmdline = "";
-        }
-        else if (cmdline.length() < 200)
-        {
+        } else if (cmdline.length() < 200) {
             cmdline += c;
         }
     }
-    if (web)
-    {
+    if (web) {
         web->handleClient();
     }
 
     /* hold the BOOT button for 3 seconds: restart into setup mode */
     {
         static uint32_t pressedSince = 0;
-        if (digitalRead(SETUP_BUTTON_PIN) == LOW)
-        {
-            if (pressedSince == 0)
-            {
+        if (digitalRead(SETUP_BUTTON_PIN) == LOW) {
+            if (pressedSince == 0) {
                 pressedSince = now | 1;
-            }
-            else if (!setupMode && now - pressedSince >= SETUP_HOLD_MS)
-            {
+            } else if (!setupMode && now - pressedSince >= SETUP_HOLD_MS) {
                 restartIntoSetup();
             }
-        }
-        else
-        {
+        } else {
             pressedSince = 0;
         }
     }
 
     /* Bluetooth transport events */
-    if (btClosed)
-    {
+    if (btClosed) {
         btClosed = false;
-        if (btConnected)
-        {
+        if (btConnected) {
             btConnected = false;
             bridge_dev_disconnected(&br, now);
         }
     }
-    if (btOpened)
-    {
+    if (btOpened) {
         btOpened = false;
         btConnected = true;
         bridge_dev_connected(&br, btPeer, now);
-        if (cfg.verbose)
-        {
+        if (cfg.verbose) {
             Serial.printf("[%8lu] free heap %u (lowest %u)\n", (unsigned long)now, (unsigned)ESP.getFreeHeap(),
                           (unsigned)ESP.getMinFreeHeap());
         }
     }
-    if (btConnected)
-    {
+    if (btConnected) {
         uint8_t buf[256];
-        int     n;
-        while ((n = SerialBT.available()) > 0)
-        {
+        int n;
+        while ((n = SerialBT.available()) > 0) {
             n = SerialBT.readBytes(buf, n > (int)sizeof(buf) ? sizeof(buf) : n);
             bridge_dev_input(&br, buf, (size_t)n, millis());
         }
     }
 
     /* Wi-Fi */
-    if (!web)
-    {
+    if (!web) {
         bool up = WiFi.status() == WL_CONNECTED;
         bridge_set_wifi(&br, up ? 1 : 0, (gc_i8)WiFi.RSSI(), now);
     }
 
     /* TCP */
-    if (tcpConnected && !tcp.connected())
-    {
+    if (tcpConnected && !tcp.connected()) {
         tcpConnected = false;
         tcp.stop();
         bridge_srv_disconnected(&br, now);
     }
-    if (tcpConnected)
-    {
+    if (tcpConnected) {
         uint8_t buf[512];
-        int     n;
-        while ((n = tcp.available()) > 0)
-        {
+        int n;
+        while ((n = tcp.available()) > 0) {
             n = tcp.read(buf, n > (int)sizeof(buf) ? sizeof(buf) : n);
-            if (n <= 0)
-            {
+            if (n <= 0) {
                 break;
             }
             bridge_srv_input(&br, buf, (size_t)n, millis());
         }
     }
-    if (tcpWanted && !tcpConnected && WiFi.status() == WL_CONNECTED)
-    {
+    if (tcpWanted && !tcpConnected && WiFi.status() == WL_CONNECTED) {
         tryConnectServer();
     }
 
@@ -570,9 +537,8 @@ void loop()
     /* warn once when memory gets tight (crashes follow when it runs out) */
     {
         static bool warned = false;
-        uint32_t    lowest = ESP.getMinFreeHeap();
-        if (!warned && lowest < 12000)
-        {
+        uint32_t lowest = ESP.getMinFreeHeap();
+        if (!warned && lowest < 12000) {
             warned = true;
             Serial.printf("[%8lu] warning: free heap went down to %u bytes\n", (unsigned long)now, (unsigned)lowest);
         }
@@ -580,24 +546,16 @@ void loop()
 
     /* LED: off = no Wi-Fi, slow blink = server, solid = device + server,
        fast blink = setup mode */
-    if (now - lastLed > (setupMode ? 80u : 250u))
-    {
+    if (now - lastLed > (setupMode ? 80u : 250u)) {
         static bool on = false;
         lastLed = now;
-        if (setupMode)
-        {
+        if (setupMode) {
             on = !on;
-        }
-        else if (br.srv_state == GC_BS_UP && btConnected)
-        {
+        } else if (br.srv_state == GC_BS_UP && btConnected) {
             on = true;
-        }
-        else if (br.srv_state == GC_BS_UP)
-        {
+        } else if (br.srv_state == GC_BS_UP) {
             on = !on;
-        }
-        else
-        {
+        } else {
             on = false;
         }
         digitalWrite(LED_PIN, on ? HIGH : LOW);

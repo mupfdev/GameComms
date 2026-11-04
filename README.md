@@ -1,15 +1,91 @@
-# GameComms
+# PhantomLink
 
-[![ci](https://github.com/mupfdev/GameComms/actions/workflows/ci.yaml/badge.svg)](https://github.com/mupfdev/GameComms/actions/workflows/ci.yaml)
+[![PhantomLink](https://raw.githubusercontent.com/ngagesdk/PhantomLink/main/media/logo-modern.png)](https://raw.githubusercontent.com/ngagesdk/PhantomLink/main/media/logo-modern.png?raw=true "PhantomLink")
 
-GameComms was the multiplayer library of the Nokia N-Gage SDK. Most
-N-Gage multiplayer games use it to connect up to four devices over
-Bluetooth. This project replaces it so that these games can play over
-Wi-Fi and the Internet, without changes to the games.
+[![Continuous Integration](https://github.com/ngagesdk/PhantomLink/actions/workflows/ci.yaml/badge.svg)](https://github.com/ngagesdk/PhantomLink/actions/workflows/ci.yaml)
 
-The N-Gage talks Bluetooth to a bridge: an ESP32 board or a computer with
-Bluetooth (Linux, for example a Raspberry Pi; Windows with limitations). The bridge connects to a server, which matches
-players of the same game and forwards their data.
+[![Co-created with AI](https://madebyhuman.iamjarl.com/badges/co-created-white.svg)](https://madebyhuman.iamjarl.com)
+
+PhantomLink aims to provide drop-in replacements for **GameComms**, the proprietary
+multiplayer communication library included in the Nokia N-Gage SDK.
+
+GameComms provided a unified API that allowed up to four Nokia N-Gage devices to
+communicate with each other over Bluetooth. PhantomLink replaces this functionality,
+enabling existing N-Gage multiplayer games to be played over Wi-Fi and the Internet
+without requiring any modifications to the original games.
+
+To achieve this, PhantomLink uses a bridge device that communicates with the N-Gage
+over Bluetooth and relays multiplayer data to a central server. The bridge can run
+on an ESP32 development board or on a computer with Bluetooth support, such as a
+Linux system (including a Raspberry Pi) or, with some limitations, Windows.
+
+The server handles matchmaking between players running the same game and forwards
+communication data between their devices, effectively extending the original
+Bluetooth multiplayer functionality across the Internet.
+
+## Project History
+
+PhantomLink was originally started in **2023**. However, development was put on hold
+due to the lack of useful documentation on GameComms and the challenges involved in
+understanding and reproducing its underlying behavior.
+
+In **2026**, the project was handed over to **Claude** with the goal of finally
+bringing it into a functional, working state and turning the original concept into a
+usable replacement for GameComms.
+
+The ultimate goal remains simple: bring online multiplayer back to the Nokia N-Gage,
+allowing players to enjoy existing multiplayer games regardless of physical distance.
+
+# Why PhantomLink?
+
+The name **PhantomLink** captures the idea of playing local multiplayer without being
+physically local. The _Phantom_ represents the invisible presence of players who are
+connected from somewhere else, seemingly sharing the same room despite being miles
+apart. The _Link_ is the connection that makes this possible, bridging the gap between
+the original Bluetooth experience and the world beyond. Together, PhantomLink lets
+distant players become phantoms in each other's local multiplayer sessions.
+
+## Requirements
+
+To use PhantomLink and play Nokia N-Gage multiplayer games online, you need the
+following:
+
+1. A Nokia N-Gage game
+
+- You need a copy of the game with copy protection removed, as PhantomLink replaces
+  the original `GAMECOMMS.DLL`.
+
+- Original N-Gage game cartridges are read-only, so the required modification cannot
+  be applied directly to them.
+
+- Naturally, we encourage you to use your own legally purchased games and create your
+  own game copies for use with PhantomLink.
+
+2. A Bluetooth bridge device
+
+You need one of the following devices to connect your N-Gage to PhantomLink:
+
+- An ESP32 development board with Bluetooth support.
+
+- A Linux PC with Bluetooth support.
+
+- A Raspberry Pi with Bluetooth support.
+
+- A Windows PC with Bluetooth support (some limitations apply).
+
+3. An Internet connection
+
+- The bridge device needs Internet access to communicate with the PhantomLink server.
+- All players must connect to the same server to find each other and play together.
+
+4. A Nokia N-Gage device
+
+- Obviously, you need a working Nokia N-Gage (Classic or QD) capable of running the
+  game you want to play.
+
+That's it! PhantomLink takes care of bridging the original Bluetooth multiplayer
+communication over the Internet, allowing you to play classic N-Gage multiplayer
+games with other players regardless of physical distance.
 
 ## Contents
 
@@ -20,7 +96,6 @@ players of the same game and forwards their data.
 - `protocol/` - protocol library shared by all three parts
 - `tests/` - automated tests
 - `tools/` - variant identification and reverse engineering scripts
-- `legacy/` - the previous prototype, kept for reference
 
 ## Documentation
 
@@ -117,7 +192,12 @@ cannot be mixed. Other combinations are not tested.
 
 ## License
 
-MIT, see [LICENSE.md](LICENSE.md). The files in `dll/symbian/bt/` are
-based on Nokia's Bluetooth example code. The original DLLs in
-`reference/` and the documents in `sdk-docu/` belong to Nokia and are
-only included for analysis.
+MIT, see [LICENSE.md](LICENSE.md).  
+
+The files in `dll/symbian/bt/` are based on Nokia's Bluetooth example code.
+
+Both [PhantomLink logos](media/) were provided by [Dan Whelan](https://danwhelan.ie/)
+and are released under the
+[CC0 1.0 Universal license](https://creativecommons.org/publicdomain/zero/1.0/).
+
+You are free to use, modify, and distribute them without restriction.

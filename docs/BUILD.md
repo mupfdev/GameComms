@@ -10,6 +10,35 @@
 | Server | C99 compiler, CMake | `gamecommsd` |
 | Tests | C compiler, CMake, Python 3 | test report |
 
+Ready-made binaries of everything above are published by CI as the
+pre-release **PhantomLink Continuous Integration Build** (tag `continuous`,
+GitHub Releases page): `PhantomLink.zip` with the Windows PC bridge, the
+server for Linux x86_64 and Windows, all DLL variants and the ESP32
+firmware. It is rebuilt on every push to `main`.
+
+## CMake presets
+
+`CMakePresets.json` builds each part on its own or everything at once
+(also selectable in Visual Studio). Output goes to `out/build/<preset>`.
+
+| Preset | Builds | Host / requirements |
+|---|---|---|
+| `N-Gage` | all DLL variants (`out/build/N-Gage/dll/out/vN/gamecomms.dll`) | `NGAGESDK` |
+| `N-Gage-v1` ... `N-Gage-v11` (build presets) | a single DLL variant | `NGAGESDK` |
+| `pcbridge-windows` | `gcbridge.exe` | Windows, MSVC |
+| `server` | `gamecommsd` and its unit tests | any |
+| `all` | PC bridge, server and all DLL variants, staged in `out/build/all/dist/PhantomLink` | Windows, MSVC, `NGAGESDK` |
+
+```bat
+cmake --workflow --preset all
+cmake --workflow --preset server
+cmake --preset N-Gage && cmake --build --preset N-Gage-v6
+```
+
+On the command line, the MSVC presets need a Developer Command Prompt
+(or Developer PowerShell) for x64. The ESP32 firmware is not a CMake
+project; build it with PlatformIO as described below.
+
 ## Replacement DLLs
 
 Requirements: the [ngage-toolchain](https://github.com/ngagesdk/ngage-toolchain)
@@ -43,7 +72,7 @@ If an older build folder exists, delete it before building.
 ```ini
 [Config]
 ; name shown to other players (default: the phone's Bluetooth name)
-DeviceName=mupfdev
+DeviceName=Maxwell
 ; 1 = join the first open game without showing the list
 AutoJoin=0
 ; 1 = write E:\GameComms.log
@@ -193,8 +222,9 @@ Bluetooth adapter.
 ### Windows
 
 Requirements: Windows 10 or 11 with a Bluetooth adapter that is switched
-on. Download `gcbridge-windows` from the latest CI run on GitHub (Actions
-tab), or build it:
+on. Download `PhantomLink.zip` from the CI release (folder
+`pcbridge/windows`), `gcbridge-windows` from the latest CI run on GitHub
+(Actions tab), or build it:
 
 ```bat
 cmake -S pcbridge -B build\pcbridge
@@ -346,7 +376,9 @@ ctest --test-dir build/tests --output-on-failure
 | `dll_variants` | Export tables of all variants compared with the original DLLs |
 
 CI runs these tests on Linux and Windows and also builds the Docker image,
-the ESP32 firmware and `gcbridge.exe`.
+the ESP32 firmware, the server, `gcbridge.exe` and all DLL variants, packs
+them into `PhantomLink.zip` and publishes it as the CI release (pushes to
+`main` only).
 
 ## Hardware test plan
 

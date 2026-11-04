@@ -22,28 +22,28 @@
 extern "C" {
 #endif
 
-typedef struct gcs_core    gcs_core;
-typedef struct gcs_peer    gcs_peer;
+typedef struct gcs_core gcs_core;
+typedef struct gcs_peer gcs_peer;
 typedef struct gcs_session gcs_session;
 
 /** A transport connection owned by the network layer. */
 typedef struct gcs_conn
 {
-    void     *net;   /* network layer handle */
-    gcs_peer *peer;  /* maintained by the core */
+    void *net;      /* network layer handle */
+    gcs_peer *peer; /* maintained by the core */
 } gcs_conn;
 
 typedef struct
 {
-    char   server_name[GC_MAX_NAME + 1];
-    char   access_key[GC_MAX_NAME + 1]; /* empty: no key required */
-    int    max_peers;
-    int    max_sessions;
-    gc_u32 link_grace_ms;   /* keep a silent peer's link for resumption */
-    gc_u32 reserve_ms;      /* keep a lost client's slot for rejoin      */
-    gc_u32 pending_ms;      /* how long a JOIN may wait for confirmation */
-    int    max_outq;        /* queued messages per peer before dropping  */
-    int    log_level;       /* 0 errors .. 3 debug                       */
+    char server_name[GC_MAX_NAME + 1];
+    char access_key[GC_MAX_NAME + 1]; /* empty: no key required */
+    int max_peers;
+    int max_sessions;
+    gc_u32 link_grace_ms; /* keep a silent peer's link for resumption */
+    gc_u32 reserve_ms;    /* keep a lost client's slot for rejoin      */
+    gc_u32 pending_ms;    /* how long a JOIN may wait for confirmation */
+    int max_outq;         /* queued messages per peer before dropping  */
+    int log_level;        /* 0 errors .. 3 debug                       */
 } gcs_config;
 
 typedef struct
@@ -59,7 +59,7 @@ typedef struct
 void gcs_default_config(gcs_config *cfg);
 
 gcs_core *gcs_core_create(const gcs_config *cfg, const gcs_io *io, void *io_ctx, gc_u32 seed);
-void      gcs_core_destroy(gcs_core *core);
+void gcs_core_destroy(gcs_core *core);
 
 /** A new transport connection was accepted. */
 void gcs_core_conn_open(gcs_core *core, gcs_conn *conn, gc_u32 now);
@@ -75,9 +75,9 @@ void gcs_core_poll(gcs_core *core, gc_u32 now);
 
 typedef struct
 {
-    int    peers;
-    int    peers_attached;
-    int    sessions;
+    int peers;
+    int peers_attached;
+    int sessions;
     gc_u32 msgs_routed;
     gc_u32 msgs_dropped;
     gc_u32 resumes;

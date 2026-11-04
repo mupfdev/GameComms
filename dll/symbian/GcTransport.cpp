@@ -18,8 +18,8 @@ const TInt KGcWriteBufferSize = 16384;
 
 class CGcWriter : public CActive
 {
-public:
-    CGcWriter(RSocket& aSocket) : CActive(EPriorityStandard), iSocket(aSocket)
+  public:
+    CGcWriter(RSocket &aSocket) : CActive(EPriorityStandard), iSocket(aSocket)
     {
         CActiveScheduler::Add(this);
     }
@@ -32,11 +32,10 @@ public:
     {
         iPending = HBufC8::NewL(KGcWriteBufferSize);
     }
-    TInt Write(const TDesC8& aData)
+    TInt Write(const TDesC8 &aData)
     {
         TPtr8 p = iPending->Des();
-        if (p.Length() + aData.Length() > p.MaxLength())
-        {
+        if (p.Length() + aData.Length() > p.MaxLength()) {
             return KErrOverflow;
         }
         p.Append(aData);
@@ -50,12 +49,11 @@ public:
         iInFlight.Zero();
     }
 
-protected:
+  protected:
     void RunL()
     {
         iInFlight.Zero();
-        if (iStatus.Int() != KErrNone)
-        {
+        if (iStatus.Int() != KErrNone) {
             iPending->Des().Zero(); /* reader reports the error */
             return;
         }
@@ -66,38 +64,37 @@ protected:
         iSocket.CancelWrite();
     }
 
-private:
+  private:
     void Kick()
     {
-        if (IsActive() || iPending->Length() == 0)
-        {
+        if (IsActive() || iPending->Length() == 0) {
             return;
         }
         TPtr8 p = iPending->Des();
-        TInt  n = p.Length() < iInFlight.MaxLength() ? p.Length() : iInFlight.MaxLength();
+        TInt n = p.Length() < iInFlight.MaxLength() ? p.Length() : iInFlight.MaxLength();
         iInFlight.Copy(p.Left(n));
         p.Delete(0, n);
         iSocket.Write(iInFlight, iStatus);
         SetActive();
     }
 
-    RSocket&    iSocket;
-    HBufC8*     iPending;
+    RSocket &iSocket;
+    HBufC8 *iPending;
     TBuf8<1024> iInFlight;
 };
 
 /* ------------------------------------------------------------------ */
 
-CGcTransport* CGcTransport::NewL(MGcTransportObserver& aObserver, TGcConfig& aConfig)
+CGcTransport *CGcTransport::NewL(MGcTransportObserver &aObserver, TGcConfig &aConfig)
 {
-    CGcTransport* self = new (ELeave) CGcTransport(aObserver, aConfig);
+    CGcTransport *self = new (ELeave) CGcTransport(aObserver, aConfig);
     CleanupStack::PushL(self);
     self->ConstructL();
     CleanupStack::Pop();
     return self;
 }
 
-CGcTransport::CGcTransport(MGcTransportObserver& aObserver, TGcConfig& aConfig)
+CGcTransport::CGcTransport(MGcTransportObserver &aObserver, TGcConfig &aConfig)
     : CActive(EPriorityStandard), iObserver(aObserver), iConfig(aConfig), iState(EIdle)
 {
     CActiveScheduler::Add(this);
@@ -121,16 +118,13 @@ CGcTransport::~CGcTransport()
 
 void CGcTransport::ConnectL()
 {
-    if (iState != EIdle)
-    {
+    if (iState != EIdle) {
         return;
     }
-    if (iConfig.iHasBridge)
-    {
+    if (iConfig.iHasBridge) {
         iObserver.TransportProgress(_L8("using saved bridge address, channel"), iConfig.iChannel);
         iSearcher->SetDeviceAddress(iConfig.iBridge);
-        if (iConfig.iChannel > 0)
-        {
+        if (iConfig.iChannel > 0) {
             ConnectSocketL(iConfig.iChannel);
             return;
         }
@@ -150,8 +144,7 @@ void CGcTransport::ConnectL()
 
 void CGcTransport::ConnectSocketL(TInt aChannel)
 {
-    if (iSocketOpen)
-    {
+    if (iSocketOpen) {
         iSocket.Close();
         iSocketOpen = EFalse;
     }
@@ -169,75 +162,68 @@ void CGcTransport::ConnectSocketL(TInt aChannel)
 void CGcTransport::RunL()
 {
     TInt err = iStatus.Int();
-    switch (iState)
-    {
-        case ESelecting:
-            iObserver.TransportSelecting(EFalse);
-            if (err != KErrNone)
-            {
-                Fail(err);
-                return;
-            }
-            iObserver.TransportProgress(_L8("device selected, address saved"), 0);
-            iConfig.SaveBridgeAddress(iSearcher->BTDevAddr());
-            if (iConfig.iChannel > 0)
-            {
-                ConnectSocketL(iConfig.iChannel);
-                return;
-            }
-            iObserver.TransportProgress(_L8("searching serial port service"), 0);
-            iState = ESearching;
-            iSearcher->ResetPort();
-            iSearcher->FindServiceL(iStatus);
-            SetActive();
+    switch (iState) {
+    case ESelecting:
+        iObserver.TransportSelecting(EFalse);
+        if (err != KErrNone) {
+            Fail(err);
             return;
-
-        case ESearching:
-            iObserver.TransportProgress(_L8("service search result"), err);
-            if (err != KErrNone)
-            {
-                Fail(err);
-                return;
-            }
-            /* RFCOMM channels are 1..30; anything else means the search did
-               not really find the service (seen once right after pairing) */
-            if (iSearcher->Port() < 1 || iSearcher->Port() > 30)
-            {
-                iObserver.TransportProgress(_L8("service search gave no valid channel"), iSearcher->Port());
-                Fail(KErrNotFound);
-                return;
-            }
-            ConnectSocketL(iSearcher->Port());
+        }
+        iObserver.TransportProgress(_L8("device selected, address saved"), 0);
+        iConfig.SaveBridgeAddress(iSearcher->BTDevAddr());
+        if (iConfig.iChannel > 0) {
+            ConnectSocketL(iConfig.iChannel);
             return;
+        }
+        iObserver.TransportProgress(_L8("searching serial port service"), 0);
+        iState = ESearching;
+        iSearcher->ResetPort();
+        iSearcher->FindServiceL(iStatus);
+        SetActive();
+        return;
 
-        case EConnecting:
-            if (err != KErrNone)
-            {
-                Fail(err);
-                return;
-            }
-            iState = EConnected;
-            iObserver.TransportUp();
+    case ESearching:
+        iObserver.TransportProgress(_L8("service search result"), err);
+        if (err != KErrNone) {
+            Fail(err);
+            return;
+        }
+        /* RFCOMM channels are 1..30; anything else means the search did
+           not really find the service (seen once right after pairing) */
+        if (iSearcher->Port() < 1 || iSearcher->Port() > 30) {
+            iObserver.TransportProgress(_L8("service search gave no valid channel"), iSearcher->Port());
+            Fail(KErrNotFound);
+            return;
+        }
+        ConnectSocketL(iSearcher->Port());
+        return;
+
+    case EConnecting:
+        if (err != KErrNone) {
+            Fail(err);
+            return;
+        }
+        iState = EConnected;
+        iObserver.TransportUp();
+        iSocket.RecvOneOrMore(iReadBuf, 0, iStatus, iReadLen);
+        SetActive();
+        return;
+
+    case EConnected:
+        if (err != KErrNone) {
+            Fail(err);
+            return;
+        }
+        iObserver.TransportData(iReadBuf);
+        if (iState == EConnected) /* observer may have disconnected us */
+        {
             iSocket.RecvOneOrMore(iReadBuf, 0, iStatus, iReadLen);
             SetActive();
-            return;
+        }
+        return;
 
-        case EConnected:
-            if (err != KErrNone)
-            {
-                Fail(err);
-                return;
-            }
-            iObserver.TransportData(iReadBuf);
-            if (iState == EConnected) /* observer may have disconnected us */
-            {
-                iSocket.RecvOneOrMore(iReadBuf, 0, iStatus, iReadLen);
-                SetActive();
-            }
-            return;
-
-        default:
-            return;
+    default:
+        return;
     }
 }
 
@@ -249,22 +235,21 @@ TInt CGcTransport::RunError(TInt aError)
 
 void CGcTransport::DoCancel()
 {
-    switch (iState)
-    {
-        case ESelecting:
-            iSearcher->CancelSelection();
-            break;
-        case ESearching:
-            iSearcher->CancelFindService();
-            break;
-        case EConnecting:
-            iSocket.CancelConnect();
-            break;
-        case EConnected:
-            iSocket.CancelRead();
-            break;
-        default:
-            break;
+    switch (iState) {
+    case ESelecting:
+        iSearcher->CancelSelection();
+        break;
+    case ESearching:
+        iSearcher->CancelFindService();
+        break;
+    case EConnecting:
+        iSocket.CancelConnect();
+        break;
+    case EConnected:
+        iSocket.CancelRead();
+        break;
+    default:
+        break;
     }
 }
 
@@ -273,8 +258,7 @@ void CGcTransport::Fail(TInt aError)
     TBool wasUp = iState == EConnected;
     iObserver.TransportProgress(_L8("transport step failed, state"), iState);
     iWriter->Reset();
-    if (iSocketOpen)
-    {
+    if (iSocketOpen) {
         iSocket.Close();
         iSocketOpen = EFalse;
     }
@@ -287,18 +271,16 @@ void CGcTransport::Disconnect()
 {
     Cancel();
     iWriter->Reset();
-    if (iSocketOpen)
-    {
+    if (iSocketOpen) {
         iSocket.Close();
         iSocketOpen = EFalse;
     }
     iState = EIdle;
 }
 
-TInt CGcTransport::Write(const TDesC8& aData)
+TInt CGcTransport::Write(const TDesC8 &aData)
 {
-    if (iState != EConnected)
-    {
+    if (iState != EConnected) {
         return KErrNotReady;
     }
     return iWriter->Write(aData);

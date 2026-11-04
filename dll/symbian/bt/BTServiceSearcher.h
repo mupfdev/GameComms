@@ -3,49 +3,49 @@
 #ifndef __BTSERVICESEARCHER_H__
 #define __BTSERVICESEARCHER_H__
 
-#include <e32base.h>
-#include <bttypes.h>
 #include <btextnotifiers.h>
+#include <bttypes.h>
+#include <e32base.h>
 
-#include "SdpAttributeParser.h"
 #include "SdpAttributeNotifier.h"
+#include "SdpAttributeParser.h"
 
-/*! 
+/*!
   @class CBTServiceSearcher
-  
+
   @discussion Searches for a service on a remote machine
   */
 
 class CBTServiceSearcher : public CBase,
                            public MSdpAgentNotifier,
                            public MSdpAttributeNotifier
-    {
-public:
-/*!
-  @function ~CBTServiceSearcher
-  
-  @discussion Destroy the object and release all memory objects
-  */
+{
+  public:
+    /*!
+      @function ~CBTServiceSearcher
+
+      @discussion Destroy the object and release all memory objects
+      */
     ~CBTServiceSearcher();
 
-/*!
-  @function SelectDeviceByDiscoveryL
-  
-  @discussion Select a device
-  @param aObserverRequestStatus the observer that is to be notified when the device selection is complete
-  */
-    void SelectDeviceByDiscoveryL(TRequestStatus& aObserverRequestStatus);
-    
-/*!
-  @function FindServiceL
-  
-  @discussion Find a service on the specified device
-  @param aObserverRequestStatus the observer that is to be notified when the service search is complete
-  */    
-    void FindServiceL(TRequestStatus& iObserverRequestStatus);
+    /*!
+      @function SelectDeviceByDiscoveryL
+
+      @discussion Select a device
+      @param aObserverRequestStatus the observer that is to be notified when the device selection is complete
+      */
+    void SelectDeviceByDiscoveryL(TRequestStatus &aObserverRequestStatus);
+
+    /*!
+      @function FindServiceL
+
+      @discussion Find a service on the specified device
+      @param aObserverRequestStatus the observer that is to be notified when the service search is complete
+      */
+    void FindServiceL(TRequestStatus &iObserverRequestStatus);
 
     /* GameComms: use a known device instead of the selection dialog */
-    void SetDeviceAddress(const TBTDevAddr& aAddr);
+    void SetDeviceAddress(const TBTDevAddr &aAddr);
 
     /* GameComms: cancel an outstanding device selection */
     void CancelSelection();
@@ -54,141 +54,139 @@ public:
        caller's request with KErrCancel) */
     void CancelFindService();
 
-/*!
-  @function BTDevAddr
-  
-  @result the bluetooth device address
-  */    
-    const TBTDevAddr& BTDevAddr();
+    /*!
+      @function BTDevAddr
 
-/*!
-  @function ResponseParams
-  
-  @result Information about the device selected by the user
-  */
-    const TBTDeviceResponseParams& ResponseParams();
+      @result the bluetooth device address
+      */
+    const TBTDevAddr &BTDevAddr();
 
-protected:
-/*!
-  @function CBTServiceSearcher
+    /*!
+      @function ResponseParams
 
-  @discussion Constructs this object
-  */
+      @result Information about the device selected by the user
+      */
+    const TBTDeviceResponseParams &ResponseParams();
+
+  protected:
+    /*!
+      @function CBTServiceSearcher
+
+      @discussion Constructs this object
+      */
     CBTServiceSearcher();
 
-/*!
-  @function Finished
-  
-  @discussion The search has finished. Notify the observer that the process is complete.
-  */
+    /*!
+      @function Finished
+
+      @discussion The search has finished. Notify the observer that the process is complete.
+      */
     virtual void Finished(TInt aError = KErrNone);
 
-/*!
-  @function HasFinishedSearching
-  
-  @discussion Is the instance still wanting to search.
-  @result EFalse if the instance wants searching to continue.
-  */
+    /*!
+      @function HasFinishedSearching
+
+      @discussion Is the instance still wanting to search.
+      @result EFalse if the instance wants searching to continue.
+      */
     virtual TBool HasFinishedSearching() const;
 
-/*!
-  @function HasFoundService
-  
-  @result ETrue if a service has been found
-  */
+    /*!
+      @function HasFoundService
+
+      @result ETrue if a service has been found
+      */
     TBool HasFoundService() const;
 
-protected: // abstract methods
+  protected: // abstract methods
+             /*!
+               @function ProtocolList
+         
+               @discussion The list of Protocols required by the service.
+               */
+    virtual const TSdpAttributeParser::TSdpAttributeList &ProtocolList() const = 0;
 
-/*!
-  @function ProtocolList
-  
-  @discussion The list of Protocols required by the service.
-  */
-    virtual const TSdpAttributeParser::TSdpAttributeList& ProtocolList() const = 0;
+    /*!
+      @function ServiceClass
 
-/*!
-  @function ServiceClass
-  
-  @discussion The service class to search for
-  @result the service class UUID
-  */
-    virtual const TUUID& ServiceClass() const = 0;
+      @discussion The service class to search for
+      @result the service class UUID
+      */
+    virtual const TUUID &ServiceClass() const = 0;
 
-/*!
-  @function FoundElementL
-  
-  @discussion Read the data element
-  @param aKey a key that identifies the element
-  @param aValue the data element
-  */
-    virtual void FoundElementL(TInt aKey, CSdpAttrValue& aValue) = 0;
+    /*!
+      @function FoundElementL
 
-public: // from MSdpAgentNotifier
-/*!
-  @function NextRecordRequestComplete
-  
-  @discussion Process the result of the next record request
-  @param aError the error code
-  @param aHandle the handle of the service record
-  @param aTotalRecordsCount the total number of matching service records
-  */
+      @discussion Read the data element
+      @param aKey a key that identifies the element
+      @param aValue the data element
+      */
+    virtual void FoundElementL(TInt aKey, CSdpAttrValue &aValue) = 0;
+
+  public: // from MSdpAgentNotifier
+          /*!
+            @function NextRecordRequestComplete
+      
+            @discussion Process the result of the next record request
+            @param aError the error code
+            @param aHandle the handle of the service record
+            @param aTotalRecordsCount the total number of matching service records
+            */
     void NextRecordRequestComplete(TInt aError, TSdpServRecordHandle aHandle, TInt aTotalRecordsCount);
 
-/*!
-  @function AttributeRequestResult
-  
-  @discussion Process the next attribute requested
-  @param aHandle the handle of the service record
-  @param aAttrID the id of the attribute
-  @parma aAttrValue the value of the attribute
-  */
-    void AttributeRequestResult(TSdpServRecordHandle aHandle, TSdpAttributeID aAttrID, CSdpAttrValue* aAttrValue);
+    /*!
+      @function AttributeRequestResult
 
-/*!
-  @function AttributeRequestComplete
-  
-  @discussion Process the arrtibute request completion
-  @param aHandle the handle of the service record
-  @param aError the error code
-  */
+      @discussion Process the next attribute requested
+      @param aHandle the handle of the service record
+      @param aAttrID the id of the attribute
+      @parma aAttrValue the value of the attribute
+      */
+    void AttributeRequestResult(TSdpServRecordHandle aHandle, TSdpAttributeID aAttrID, CSdpAttrValue *aAttrValue);
+
+    /*!
+      @function AttributeRequestComplete
+
+      @discussion Process the arrtibute request completion
+      @param aHandle the handle of the service record
+      @param aError the error code
+      */
     void AttributeRequestComplete(TSdpServRecordHandle aHandle, TInt aError);
 
-private:
+  private:
+    /*!
+      @function NextRecordRequestCompleteL
 
-/*!
-  @function NextRecordRequestCompleteL
-  
-  @discussion Process the result of the next record request
-  @param aError the error code
-  @param aHandle the handle of the service record
-  @param aTotalRecordsCount the total number of matching service records
-  */
+      @discussion Process the result of the next record request
+      @param aError the error code
+      @param aHandle the handle of the service record
+      @param aTotalRecordsCount the total number of matching service records
+      */
     void NextRecordRequestCompleteL(TInt aError, TSdpServRecordHandle aHandle, TInt aTotalRecordsCount);
 
-/*!
-  @function AttributeRequestResultL
-  
-  @discussion Process the next attribute requested
-  @param aHandle the handle of the service record
-  @param aAttrID the id of the attribute
-  @parma aAttrValue the value of the attribute
-  */
-    void AttributeRequestResultL(TSdpServRecordHandle aHandle, TSdpAttributeID aAttrID, CSdpAttrValue* aAttrValue);
+    /*!
+      @function AttributeRequestResultL
 
-/*!
-  @function AttributeRequestCompleteL
-  
-  @discussion Process the arrtibute request completion
-  @param aHandle the handle of the service record
-  @param aError the error code
-  */
+      @discussion Process the next attribute requested
+      @param aHandle the handle of the service record
+      @param aAttrID the id of the attribute
+      @parma aAttrValue the value of the attribute
+      */
+    void AttributeRequestResultL(TSdpServRecordHandle aHandle, TSdpAttributeID aAttrID, CSdpAttrValue *aAttrValue);
+
+    /*!
+      @function AttributeRequestCompleteL
+
+      @discussion Process the arrtibute request completion
+      @param aHandle the handle of the service record
+      @param aError the error code
+      */
     void AttributeRequestCompleteL(TSdpServRecordHandle, TInt aError);
 
-private:
+  private:
     /*! @var iStatusObserver pointer to the request status observer */
-    TRequestStatus* iStatusObserver;
-    
+    TRequestStatus *iStatusObserver;
+
     /*! @var iIsDeviceSelectorConnected is the device selector connected ? */
     TBool iIsDeviceSelectorConnected;
 
@@ -199,14 +197,13 @@ private:
     TBTDeviceResponseParamsPckg iResponse;
 
     /*! @var iAgent a connetction to the SDP client */
-    CSdpAgent* iAgent;
+    CSdpAgent *iAgent;
 
     /*! @var iSdpSearchPattern a search pattern */
-    CSdpSearchPattern* iSdpSearchPattern;
+    CSdpSearchPattern *iSdpSearchPattern;
 
     /*! @var iHasFoundService has the service been found ? */
     TBool iHasFoundService;
-    };
+};
 
 #endif // __BTSERVICESEARCHER_H__
-

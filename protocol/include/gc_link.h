@@ -39,74 +39,74 @@ extern "C" {
 
 /* ---- protocol constants ---- */
 
-#define GC_LINK_MAGIC_0       0x47 /* 'G' */
-#define GC_LINK_MAGIC_1       0x43 /* 'C' */
-#define GC_PROTO_VERSION_MIN  1
-#define GC_PROTO_VERSION_MAX  1
+#define GC_LINK_MAGIC_0      0x47 /* 'G' */
+#define GC_LINK_MAGIC_1      0x43 /* 'C' */
+#define GC_PROTO_VERSION_MIN 1
+#define GC_PROTO_VERSION_MAX 1
 
-#define GC_LINK_HDR_LEN       6
-#define GC_LINK_MAX_MSG       (GC_FRAME_MAX_BODY - GC_LINK_HDR_LEN)
+#define GC_LINK_HDR_LEN 6
+#define GC_LINK_MAX_MSG (GC_FRAME_MAX_BODY - GC_LINK_HDR_LEN)
 
 #ifndef GC_LINK_QUEUE
-#define GC_LINK_QUEUE         16 /* max. unacknowledged + pending messages */
+#define GC_LINK_QUEUE 16 /* max. unacknowledged + pending messages */
 #endif
 
 /* frame types */
-#define GC_FT_HELLO           0x01
-#define GC_FT_HELLO_ACK       0x02
-#define GC_FT_DATA            0x03
-#define GC_FT_ACK             0x04
-#define GC_FT_PING            0x05
-#define GC_FT_PONG            0x06
-#define GC_FT_CLOSE           0x07
-#define GC_FT_REJECT          0x08
+#define GC_FT_HELLO     0x01
+#define GC_FT_HELLO_ACK 0x02
+#define GC_FT_DATA      0x03
+#define GC_FT_ACK       0x04
+#define GC_FT_PING      0x05
+#define GC_FT_PONG      0x06
+#define GC_FT_CLOSE     0x07
+#define GC_FT_REJECT    0x08
 
 /* roles announced in HELLO (diagnostics / sanity checks only) */
-#define GC_ROLE_DEVICE        1 /* N-Gage (GameComms DLL)       */
-#define GC_ROLE_BRIDGE        2 /* ESP32 bridge                  */
-#define GC_ROLE_SERVER        3 /* endpoint server               */
-#define GC_ROLE_TEST          9 /* test harness / simulator      */
+#define GC_ROLE_DEVICE 1 /* N-Gage (GameComms DLL)       */
+#define GC_ROLE_BRIDGE 2 /* ESP32 bridge                  */
+#define GC_ROLE_SERVER 3 /* endpoint server               */
+#define GC_ROLE_TEST   9 /* test harness / simulator      */
 
 /* reject / close reasons */
-#define GC_LR_NONE            0
-#define GC_LR_VERSION         1 /* no common protocol version    */
-#define GC_LR_BAD_HELLO       2
-#define GC_LR_TIMEOUT         3 /* peer silent for dead_ms       */
-#define GC_LR_RETRIES         4 /* data never acknowledged       */
-#define GC_LR_LOCAL           5 /* closed by the local side      */
-#define GC_LR_REMOTE          6 /* CLOSE received                */
-#define GC_LR_TRANSPORT       7 /* underlying stream went away   */
-#define GC_LR_PROTOCOL        8 /* protocol violation            */
+#define GC_LR_NONE      0
+#define GC_LR_VERSION   1 /* no common protocol version    */
+#define GC_LR_BAD_HELLO 2
+#define GC_LR_TIMEOUT   3 /* peer silent for dead_ms       */
+#define GC_LR_RETRIES   4 /* data never acknowledged       */
+#define GC_LR_LOCAL     5 /* closed by the local side      */
+#define GC_LR_REMOTE    6 /* CLOSE received                */
+#define GC_LR_TRANSPORT 7 /* underlying stream went away   */
+#define GC_LR_PROTOCOL  8 /* protocol violation            */
 
 /* link states */
-#define GC_LS_IDLE            0 /* not started                         */
-#define GC_LS_HELLO_SENT      1 /* initiator waiting for HELLO_ACK     */
-#define GC_LS_WAIT_HELLO      2 /* acceptor waiting for HELLO          */
-#define GC_LS_UP              3
-#define GC_LS_DOWN            4 /* lost; may be resumed               */
-#define GC_LS_CLOSED          5 /* closed for good                    */
+#define GC_LS_IDLE       0 /* not started                         */
+#define GC_LS_HELLO_SENT 1 /* initiator waiting for HELLO_ACK     */
+#define GC_LS_WAIT_HELLO 2 /* acceptor waiting for HELLO          */
+#define GC_LS_UP         3
+#define GC_LS_DOWN       4 /* lost; may be resumed               */
+#define GC_LS_CLOSED     5 /* closed for good                    */
 
 /* events reported through gc_link_ops.on_state */
-#define GC_LE_UP_FRESH        1 /* new session: peer state is unknown  */
-#define GC_LE_UP_RESUMED      2 /* resumed: nothing was lost           */
-#define GC_LE_DOWN            3 /* transport lost, resumable           */
-#define GC_LE_CLOSED          4 /* closed / rejected, not resumable    */
+#define GC_LE_UP_FRESH   1 /* new session: peer state is unknown  */
+#define GC_LE_UP_RESUMED 2 /* resumed: nothing was lost           */
+#define GC_LE_DOWN       3 /* transport lost, resumable           */
+#define GC_LE_CLOSED     4 /* closed / rejected, not resumable    */
 
 /* gc_link_send() results */
-#define GC_LINK_OK            0
-#define GC_LINK_E_FULL        (-1)
-#define GC_LINK_E_TOOBIG      (-2)
-#define GC_LINK_E_STATE       (-3)
+#define GC_LINK_OK       0
+#define GC_LINK_E_FULL   (-1)
+#define GC_LINK_E_TOOBIG (-2)
+#define GC_LINK_E_STATE  (-3)
 
 typedef struct
 {
-    gc_u8  ver_min;
-    gc_u8  ver_max;
-    gc_u8  role;
+    gc_u8 ver_min;
+    gc_u8 ver_max;
+    gc_u8 role;
     gc_u32 link_id;
-    gc_u16 rx_next;   /* next sequence number the sender expects */
+    gc_u16 rx_next; /* next sequence number the sender expects */
     gc_u16 max_msg;
-    gc_u8  window;
+    gc_u8 window;
 } gc_hello;
 
 typedef struct
@@ -131,64 +131,64 @@ typedef struct
 
 typedef struct
 {
-    gc_u16 rto_ms;      /* initial retransmission timeout          */
-    gc_u16 rto_max_ms;  /* back-off ceiling                         */
-    gc_u16 ka_ms;       /* send PING after this much tx silence      */
-    gc_u16 dead_ms;     /* declare peer dead after this rx silence   */
-    gc_u16 hello_ms;    /* HELLO retry interval (initiator)          */
-    gc_u8  role;
-    gc_u8  initiator;   /* 1: sends HELLO, 0: waits for HELLO        */
+    gc_u16 rto_ms;     /* initial retransmission timeout          */
+    gc_u16 rto_max_ms; /* back-off ceiling                         */
+    gc_u16 ka_ms;      /* send PING after this much tx silence      */
+    gc_u16 dead_ms;    /* declare peer dead after this rx silence   */
+    gc_u16 hello_ms;   /* HELLO retry interval (initiator)          */
+    gc_u8 role;
+    gc_u8 initiator; /* 1: sends HELLO, 0: waits for HELLO        */
 } gc_link_cfg;
 
 typedef struct
 {
     gc_u16 len;
     gc_u16 seq;
-    gc_u8  data[GC_LINK_MAX_MSG];
+    gc_u8 data[GC_LINK_MAX_MSG];
 } gc_link_slot;
 
 typedef struct
 {
-    gc_link_cfg  cfg;
-    gc_link_ops  ops;
-    void        *ctx;
-    gc_deframer  rx;
+    gc_link_cfg cfg;
+    gc_link_ops ops;
+    void *ctx;
+    gc_deframer rx;
 
-    int          state;
-    gc_u8        version;      /* negotiated protocol version */
-    gc_u8        peer_role;
-    gc_u32       link_id;      /* identity of this link session */
-    int          has_session;  /* link_id/sequence state are valid */
+    int state;
+    gc_u8 version; /* negotiated protocol version */
+    gc_u8 peer_role;
+    gc_u32 link_id;  /* identity of this link session */
+    int has_session; /* link_id/sequence state are valid */
 
     /* transmit side */
     gc_link_slot q[GC_LINK_QUEUE];
-    gc_u16       q_head;       /* index of oldest queued message     */
-    gc_u16       q_count;
-    gc_u16       q_sent;       /* how many of q_count were transmitted */
-    gc_u16       tx_next;      /* sequence number of next new message  */
-    gc_u32       t_last_tx;
-    gc_u32       t_retx;       /* deadline for retransmission          */
-    gc_u16       rto_cur;
-    gc_u16       retries;
+    gc_u16 q_head; /* index of oldest queued message     */
+    gc_u16 q_count;
+    gc_u16 q_sent;  /* how many of q_count were transmitted */
+    gc_u16 tx_next; /* sequence number of next new message  */
+    gc_u32 t_last_tx;
+    gc_u32 t_retx; /* deadline for retransmission          */
+    gc_u16 rto_cur;
+    gc_u16 retries;
 
     /* receive side */
-    gc_u16       rx_next;      /* next expected sequence number        */
-    int          ack_pending;
-    gc_u32       t_last_rx;
-    gc_u32       t_hello;
+    gc_u16 rx_next; /* next expected sequence number        */
+    int ack_pending;
+    gc_u32 t_last_rx;
+    gc_u32 t_hello;
 
     /* statistics */
-    gc_u32       st_tx_msgs;
-    gc_u32       st_rx_msgs;
-    gc_u32       st_retx;
-    gc_u32       st_dup;
-    gc_u32       st_ooo;
-    gc_u32       st_resumes;
-    gc_u32       st_backpressure;
+    gc_u32 st_tx_msgs;
+    gc_u32 st_rx_msgs;
+    gc_u32 st_retx;
+    gc_u32 st_dup;
+    gc_u32 st_ooo;
+    gc_u32 st_resumes;
+    gc_u32 st_backpressure;
 
-    gc_u32       t_now;        /* time of the input call in progress */
-    gc_u8        scratch[GC_FRAME_MAX_BODY];
-    gc_u8        txbuf[GC_FRAME_MAX_WIRE];
+    gc_u32 t_now; /* time of the input call in progress */
+    gc_u8 scratch[GC_FRAME_MAX_BODY];
+    gc_u8 txbuf[GC_FRAME_MAX_WIRE];
 } gc_link;
 
 void gc_link_default_cfg(gc_link_cfg *cfg, gc_u8 role, int initiator);

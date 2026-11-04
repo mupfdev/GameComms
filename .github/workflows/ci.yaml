@@ -1,8 +1,17 @@
-name: ci
+name: Continuous Integration
 
 on:
   push:
   pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # ngage-toolchain commit used for the N-Gage DLLs (pinned for reproducible builds)
+  NGAGE_TOOLCHAIN_REF: 9ebd8741ce66a2fbb0f703d99c207c3303965074
+  # tag of the rolling CI release
+  CI_RELEASE_TAG: continuous
 
 jobs:
   host-tests:
@@ -11,8 +20,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: D-Bus modules for the BlueZ test (system Python)
@@ -28,55 +37,218 @@ jobs:
   server:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+      - name: Server preset (build and unit tests)
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build
+          cmake --workflow --preset server
       - name: Docker image (builds and unit-tests the server)
         run: docker build -t gamecommsd -f server/Dockerfile .
+      - name: Extract gamecommsd (Debian bookworm, x86_64)
+        run: |
+          mkdir -p dist
+          id=$(docker create gamecommsd)
+          docker cp "$id:/usr/local/bin/gamecommsd" dist/gamecommsd
+          docker rm "$id"
+          cp server/deploy/gamecommsd.conf server/deploy/gamecommsd.service dist/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: server-linux-x86_64
+          path: dist/
+          if-no-files-found: error
 
   firmware:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: PlatformIO
-        run: pip install platformio
+        run: pip install platformio "esptool>=4.7,<5"
       - name: Build ESP32 firmware
         run: pio run -d firmware
-      - uses: actions/upload-artifact@v4
+      - name: Collect images
+        run: |
+          build=firmware/.pio/build/esp32dev
+          mkdir -p dist
+          cp "$build/firmware.bin" "$build/bootloader.bin" "$build/partitions.bin" dist/
+          boot_app0=$(find ~/.platformio/packages -path '*framework-arduinoespressif32*' -name boot_app0.bin | head -n 1)
+          if [ -z "$boot_app0" ]; then echo "boot_app0.bin not found" >&2; exit 1; fi
+          cp "$boot_app0" dist/
+          # single image for a blank ESP32, flashed at offset 0x0
+          python -m esptool --chip esp32 merge_bin -o dist/firmware-factory.bin \
+            0x1000 dist/bootloader.bin 0x8000 dist/partitions.bin \
+            0xe000 dist/boot_app0.bin 0x10000 dist/firmware.bin
+          cat > dist/FLASHING.txt <<'EOF'
+          PhantomLink ESP32 bridge firmware (board: esp32dev, ESP32 with Bluetooth Classic)
+
+          Complete image (blank or unknown ESP32):
+            esptool.py --chip esp32 write_flash 0x0 firmware-factory.bin
+
+          Separate images:
+            esptool.py --chip esp32 write_flash 0x1000 bootloader.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin
+
+          Update of a bridge that already runs this firmware:
+            esptool.py --chip esp32 write_flash 0x10000 firmware.bin
+
+          Configuration: see docs/BUILD.md, "ESP32 bridge".
+          EOF
+      - uses: actions/upload-artifact@v7
         with:
           name: firmware
-          path: firmware/.pio/build/esp32dev/firmware.bin
+          path: dist/
+          if-no-files-found: error
 
   pcbridge-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build
         run: |
           cmake -S pcbridge -B build/pcbridge -DCMAKE_BUILD_TYPE=Release
           cmake --build build/pcbridge
           mkdir -p dist && cp build/pcbridge/gcbridge pcbridge/gcbridge.ini dist/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: gcbridge-linux-x86_64
           path: dist/
 
-  pcbridge-windows:
+  # PC bridge, server (MSVC) and all GAMECOMMS.DLL variants (N-Gage SDK)
+  # through the "all" preset, staged in out/build/all/dist/PhantomLink.
+  windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Configure
-        run: cmake -S pcbridge -B build/pcbridge
-      - name: Build
-        run: cmake --build build/pcbridge --config Release
-      - name: Package
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install Ninja
+        shell: pwsh
+        run: choco install ninja --confirm --no-progress
+      - uses: TheMrMilchmann/setup-msvc-dev@v4
+        with:
+          arch: x64
+      - name: Clone ngage-toolchain
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item build/pcbridge/Release/gcbridge.exe dist/
-          Copy-Item pcbridge/gcbridge.ini dist/
-      - uses: actions/upload-artifact@v4
+          $sdk = "${{ runner.temp }}/ngage-toolchain" -replace '\\', '/'
+          git clone https://github.com/ngagesdk/ngage-toolchain.git $sdk
+          git -C $sdk checkout --detach $env:NGAGE_TOOLCHAIN_REF
+          "NGAGESDK=$sdk" >> $env:GITHUB_ENV
+          "$sdk/sdk/sdk/6.1/Shared/EPOC32/gcc/bin" >> $env:GITHUB_PATH
+          "$sdk/sdk/sdk/6.1/Shared/EPOC32/ngagesdk/bin" >> $env:GITHUB_PATH
+      - name: Fetch N-Gage SDK
+        shell: pwsh
+        run: cmake -G "Ninja" -P "$env:NGAGESDK/setup/setup.cmake" -S "$env:NGAGESDK/setup" -B "$env:NGAGESDK/build"
+      - name: Build everything (preset "all")
+        shell: pwsh
+        run: cmake --workflow --preset all
+      - name: Check DLL variants (UIDs, export count)
+        shell: pwsh
+        run: python tests/compat/check_variants.py --built out/build/all/dll/out
+      - uses: actions/upload-artifact@v7
         with:
           name: gcbridge-windows
-          path: dist/
+          path: out/build/all/dist/PhantomLink/pcbridge/windows/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-dist
+          path: out/build/all/dist/PhantomLink/
+          if-no-files-found: error
+
+  package:
+    needs: [host-tests, server, firmware, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: windows-dist
+          path: dist/PhantomLink
+      - uses: actions/download-artifact@v8
+        with:
+          name: server-linux-x86_64
+          path: dist/PhantomLink/server/linux-x86_64
+      - uses: actions/download-artifact@v8
+        with:
+          name: firmware
+          path: dist/PhantomLink/firmware/esp32dev
+      - name: Assemble
+        run: |
+          root=dist/PhantomLink
+          cp README.md LICENSE.md "$root/"
+          mkdir -p "$root/docs" && cp docs/*.md "$root/docs/"
+          # artifacts do not keep file permissions
+          chmod +x "$root/server/linux-x86_64/gamecommsd"
+          cat > "$root/BUILD-INFO.txt" <<EOF
+          PhantomLink continuous integration build
+          commit:          ${GITHUB_SHA}
+          ref:             ${GITHUB_REF}
+          built:           $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          workflow run:    ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          ngage-toolchain: ${NGAGE_TOOLCHAIN_REF}
+          EOF
+      - name: Verify contents
+        run: |
+          root=dist/PhantomLink
+          required="pcbridge/windows/gcbridge.exe pcbridge/windows/gcbridge.ini
+                    server/windows/gamecommsd.exe server/linux-x86_64/gamecommsd
+                    firmware/esp32dev/firmware.bin firmware/esp32dev/firmware-factory.bin"
+          for v in $(seq 1 11); do required="$required ngage/v$v/gamecomms.dll"; done
+          missing=0
+          for f in $required; do
+            if [ ! -s "$root/$f" ]; then echo "::error::missing $f"; missing=1; fi
+          done
+          find "$root" -type f | sort
+          exit $missing
+      - name: Create ZIP
+        run: cd dist && zip -r -9 -X ../PhantomLink.zip PhantomLink
+      - uses: actions/upload-artifact@v7
+        with:
+          name: PhantomLink
+          path: PhantomLink.zip
+          if-no-files-found: error
+
+  # Rolling pre-release with the latest build of main.
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: ci-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: PhantomLink
+          path: .
+      - name: Remove previous CI release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release delete "$CI_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
+      - name: Publish CI release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.CI_RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
+          name: PhantomLink Continuous Integration Build
+          body: |
+            **Continuous Integration (CI) release** - built automatically from the latest commit on `main`; not an official, hardware-tested release.
+
+            Commit: ${{ github.sha }}
+            Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            `PhantomLink.zip` contains:
+            - `pcbridge/windows/` - PC bridge `gcbridge.exe` with `gcbridge.ini`
+            - `server/linux-x86_64/`, `server/windows/` - server `gamecommsd`
+            - `ngage/v1` ... `ngage/v11/` - replacement `gamecomms.dll`, one per variant (see docs/COMPATIBILITY.md)
+            - `firmware/esp32dev/` - ESP32 bridge firmware (see FLASHING.txt)
+          files: PhantomLink.zip
+          draft: false
+          prerelease: true
+          make_latest: false
+          token: ${{ secrets.GITHUB_TOKEN }}

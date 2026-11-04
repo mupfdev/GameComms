@@ -19,6 +19,9 @@
  *
  **/
 
+#include "bridge_core.h"
+#include "pcb_bt.h"
+#include "pcb_com.h"
 #include "pcb_sock.h"
 #include <ctype.h>
 #include <signal.h>
@@ -27,14 +30,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "bridge_core.h"
-#include "pcb_bt.h"
-#include "pcb_com.h"
 
-#define PCB_VERSION        "1.0.0"
-#define PCB_MAX_DEVICES    7
-#define PCB_OUT_MAX        (256 * 1024)
-#define PCB_FREE_AFTER_MS  3000 /* after the device grace time */
+#define PCB_VERSION       "1.0.0"
+#define PCB_MAX_DEVICES   7
+#define PCB_OUT_MAX       (256 * 1024)
+#define PCB_FREE_AFTER_MS 3000 /* after the device grace time */
 
 /* ------------------------------------------------------------------ */
 /* configuration                                                       */
@@ -43,15 +43,15 @@
 typedef struct
 {
     char server[128]; /* "auto" = LAN discovery */
-    int  port;
+    int port;
     char key[GC_MAX_NAME + 1];
     char pin[17];
     char name[64];
-    int  channel;
-    int  max_devices;
-    int  log_level;
-    int  bluetooth;
-    int  device_tcp;
+    int channel;
+    int max_devices;
+    int log_level;
+    int bluetooth;
+    int device_tcp;
     char com[256];    /* serial ports, e.g. "COM5" or "COM5,COM6" */
     char adapter[32]; /* Linux: Bluetooth adapter, e.g. hci0 */
 } pcb_config;
@@ -74,70 +74,84 @@ static void config_defaults(pcb_config *c)
 static void copy_str(char *dst, size_t n, const char *src)
 {
     size_t k = strlen(src);
-    if (k > n - 1) k = n - 1;
+    if (k > n - 1) {
+        k = n - 1;
+    }
     memmove(dst, src, k);
     dst[k] = '\0';
 }
 
 static int config_set(pcb_config *c, const char *k, const char *v)
 {
-    if (!strcmp(k, "server")) copy_str(c->server, sizeof(c->server), v);
-    else if (!strcmp(k, "port")) c->port = atoi(v);
-    else if (!strcmp(k, "key")) copy_str(c->key, sizeof(c->key), v);
-    else if (!strcmp(k, "pin")) copy_str(c->pin, sizeof(c->pin), v);
-    else if (!strcmp(k, "name")) copy_str(c->name, sizeof(c->name), v);
-    else if (!strcmp(k, "channel")) c->channel = atoi(v);
-    else if (!strcmp(k, "max_devices")) c->max_devices = atoi(v);
-    else if (!strcmp(k, "log_level")) c->log_level = atoi(v);
-    else if (!strcmp(k, "bluetooth")) c->bluetooth = atoi(v);
-    else if (!strcmp(k, "device_tcp")) c->device_tcp = atoi(v);
-    else if (!strcmp(k, "com")) copy_str(c->com, sizeof(c->com), v);
-    else if (!strcmp(k, "adapter")) copy_str(c->adapter, sizeof(c->adapter), v);
-    else return -1;
+    if (!strcmp(k, "server")) {
+        copy_str(c->server, sizeof(c->server), v);
+    } else if (!strcmp(k, "port")) {
+        c->port = atoi(v);
+    } else if (!strcmp(k, "key")) {
+        copy_str(c->key, sizeof(c->key), v);
+    } else if (!strcmp(k, "pin")) {
+        copy_str(c->pin, sizeof(c->pin), v);
+    } else if (!strcmp(k, "name")) {
+        copy_str(c->name, sizeof(c->name), v);
+    } else if (!strcmp(k, "channel")) {
+        c->channel = atoi(v);
+    } else if (!strcmp(k, "max_devices")) {
+        c->max_devices = atoi(v);
+    } else if (!strcmp(k, "log_level")) {
+        c->log_level = atoi(v);
+    } else if (!strcmp(k, "bluetooth")) {
+        c->bluetooth = atoi(v);
+    } else if (!strcmp(k, "device_tcp")) {
+        c->device_tcp = atoi(v);
+    } else if (!strcmp(k, "com")) {
+        copy_str(c->com, sizeof(c->com), v);
+    } else if (!strcmp(k, "adapter")) {
+        copy_str(c->adapter, sizeof(c->adapter), v);
+    } else {
+        return -1;
+    }
     return 0;
 }
 
 static char *trim(char *s)
 {
     char *e;
-    while (isspace((unsigned char)*s)) s++;
+    while (isspace((unsigned char)*s)) {
+        s++;
+    }
     e = s + strlen(s);
-    while (e > s && isspace((unsigned char)e[-1])) *--e = '\0';
+    while (e > s && isspace((unsigned char)e[-1])) {
+        *--e = '\0';
+    }
     return s;
 }
 
 /* key = value lines, '#' or ';' comments, [sections] ignored */
 static int config_load(pcb_config *c, const char *path, int required)
 {
-    char  line[256];
-    int   n = 0;
+    char line[256];
+    int n = 0;
     FILE *f = fopen(path, "r");
-    if (!f)
-    {
-        if (required)
-        {
+    if (!f) {
+        if (required) {
             fprintf(stderr, "cannot open %s\n", path);
             return -1;
         }
         return 0;
     }
-    while (fgets(line, sizeof(line), f))
-    {
+    while (fgets(line, sizeof(line), f)) {
         char *s = trim(line), *eq;
         n++;
-        if (*s == '\0' || *s == '#' || *s == ';' || *s == '[')
-        {
+        if (*s == '\0' || *s == '#' || *s == ';' || *s == '[') {
             continue;
         }
         eq = strchr(s, '=');
-        if (!eq)
-        {
+        if (!eq) {
             fprintf(stderr, "%s:%d: expected key = value\n", path, n);
             continue;
         }
         *eq = '\0';
-        if (config_set(c, trim(s), trim(eq + 1)) != 0)
-        {
+        if (config_set(c, trim(s), trim(eq + 1)) != 0) {
             fprintf(stderr, "%s:%d: unknown key '%s'\n", path, n, trim(s));
         }
     }
@@ -151,13 +165,12 @@ static int config_load(pcb_config *c, const char *path, int required)
 
 static void logmsg(int level, const char *fmt, ...)
 {
-    static const char *lv[] = {"ERR", "WRN", "INF", "DBG"};
-    char       line[512], ts[16];
-    va_list    ap;
-    time_t     t;
+    static const char *lv[] = { "ERR", "WRN", "INF", "DBG" };
+    char line[512], ts[16];
+    va_list ap;
+    time_t t;
     struct tm *tm;
-    if (level > g_cfg.log_level)
-    {
+    if (level > g_cfg.log_level) {
         return;
     }
     va_start(ap, fmt);
@@ -166,7 +179,9 @@ static void logmsg(int level, const char *fmt, ...)
     t = time(NULL);
     tm = localtime(&t);
     strftime(ts, sizeof(ts), "%H:%M:%S", tm);
-    printf("%s %s %s\n", ts, lv[level < 0 ? 0 : level > 3 ? 3 : level], line);
+    printf("%s %s %s\n", ts, lv[level < 0 ? 0 : level > 3 ? 3
+                                                          : level],
+           line);
     fflush(stdout);
 }
 
@@ -206,16 +221,12 @@ typedef struct
 /* returns -1 on a write error or overflow */
 static int out_flush(sock_t s, outbuf *o)
 {
-    while (o->len > 0)
-    {
+    while (o->len > 0) {
         int n = (int)send(s, (const char *)o->data, (int)o->len, 0);
-        if (n > 0)
-        {
+        if (n > 0) {
             memmove(o->data, o->data + n, o->len - (size_t)n);
             o->len -= (size_t)n;
-        }
-        else
-        {
+        } else {
             return (n < 0 && SOCK_EAGAIN(sock_err())) ? 0 : -1;
         }
     }
@@ -224,14 +235,19 @@ static int out_flush(sock_t s, outbuf *o)
 
 static int out_append(outbuf *o, const gc_u8 *d, size_t n)
 {
-    if (o->len + n > o->cap)
-    {
+    if (o->len + n > o->cap) {
         size_t cap = o->cap ? o->cap : 4096;
         gc_u8 *p;
-        while (cap < o->len + n) cap *= 2;
-        if (cap > PCB_OUT_MAX) return -1;
+        while (cap < o->len + n) {
+            cap *= 2;
+        }
+        if (cap > PCB_OUT_MAX) {
+            return -1;
+        }
         p = (gc_u8 *)realloc(o->data, cap);
-        if (!p) return -1;
+        if (!p) {
+            return -1;
+        }
         o->data = p;
         o->cap = cap;
     }
@@ -252,52 +268,52 @@ static void out_free(outbuf *o)
 
 typedef struct
 {
-    int    used;
-    int    index;
+    int used;
+    int index;
     bridge br;
-    char   addr_str[18];
-    gc_u8  addr[6];
+    char addr_str[18];
+    gc_u8 addr[6];
 
-    sock_t dev_fd;     /* Bluetooth (or test TCP) connection to the N-Gage */
-    pcb_com *com;      /* COM mode: serial port instead of dev_fd */
-    char   com_name[64];
+    sock_t dev_fd; /* Bluetooth (or test TCP) connection to the N-Gage */
+    pcb_com *com;  /* COM mode: serial port instead of dev_fd */
+    char com_name[64];
     gc_u32 t_com_retry;
-    int    com_up;     /* link to the N-Gage on this port is up */
-    int    com_lines;  /* last modem line state, for the log */
-    int    com_rx_seen; /* data seen since the link was last up */
+    int com_up;      /* link to the N-Gage on this port is up */
+    int com_lines;   /* last modem line state, for the log */
+    int com_rx_seen; /* data seen since the link was last up */
     outbuf dev_out;
-    int    dev_error;
-    gc_u32 t_gone;     /* when the N-Gage disconnected */
+    int dev_error;
+    gc_u32 t_gone; /* when the N-Gage disconnected */
 
-    sock_t srv_fd;     /* TCP connection to the server */
+    sock_t srv_fd; /* TCP connection to the server */
     outbuf srv_out;
-    int    srv_wanted;
-    int    srv_connecting;
-    int    srv_up;
-    int    srv_error;
+    int srv_wanted;
+    int srv_connecting;
+    int srv_up;
+    int srv_error;
 } pcb_dev;
 
 static pcb_dev *g_dev[PCB_MAX_DEVICES];
-static int      g_ndev;
+static int g_ndev;
 static volatile int g_stop;
 
 /* LAN discovery */
-static sock_t             g_udp = SOCK_INVALID;
+static sock_t g_udp = SOCK_INVALID;
 static struct sockaddr_in g_found;
-static int                g_have_found;
-static gc_u32             g_t_discover;
+static int g_have_found;
+static gc_u32 g_t_discover;
 
 static void com_flush(pcb_dev *p)
 {
-    while (p->com && p->dev_out.len > 0)
-    {
+    while (p->com && p->dev_out.len > 0) {
         int n = pcb_com_write(p->com, p->dev_out.data, (int)p->dev_out.len);
-        if (n < 0)
-        {
+        if (n < 0) {
             p->dev_error = 1;
             return;
         }
-        if (n == 0) return; /* try again in the next loop */
+        if (n == 0) {
+            return; /* try again in the next loop */
+        }
         memmove(p->dev_out.data, p->dev_out.data + n, p->dev_out.len - (size_t)n);
         p->dev_out.len -= (size_t)n;
     }
@@ -306,26 +322,34 @@ static void com_flush(pcb_dev *p)
 static void d_dev_write(void *ctx, const gc_u8 *d, size_t n)
 {
     pcb_dev *p = (pcb_dev *)ctx;
-    if (p->com_name[0])
-    {
-        if (!p->com || p->dev_error) return;
-        if (out_append(&p->dev_out, d, n) != 0)
-        {
+    if (p->com_name[0]) {
+        if (!p->com || p->dev_error) {
+            return;
+        }
+        if (out_append(&p->dev_out, d, n) != 0) {
             out_free(&p->dev_out); /* nobody reads the port: drop, the link retransmits */
             return;
         }
         com_flush(p);
         return;
     }
-    if (p->dev_fd == SOCK_INVALID || p->dev_error) return;
-    if (out_append(&p->dev_out, d, n) != 0 || out_flush(p->dev_fd, &p->dev_out) != 0) p->dev_error = 1;
+    if (p->dev_fd == SOCK_INVALID || p->dev_error) {
+        return;
+    }
+    if (out_append(&p->dev_out, d, n) != 0 || out_flush(p->dev_fd, &p->dev_out) != 0) {
+        p->dev_error = 1;
+    }
 }
 
 static void d_srv_write(void *ctx, const gc_u8 *d, size_t n)
 {
     pcb_dev *p = (pcb_dev *)ctx;
-    if (!p->srv_up || p->srv_error) return;
-    if (out_append(&p->srv_out, d, n) != 0 || out_flush(p->srv_fd, &p->srv_out) != 0) p->srv_error = 1;
+    if (!p->srv_up || p->srv_error) {
+        return;
+    }
+    if (out_append(&p->srv_out, d, n) != 0 || out_flush(p->srv_fd, &p->srv_out) != 0) {
+        p->srv_error = 1;
+    }
 }
 
 static void d_srv_connect(void *ctx)
@@ -335,8 +359,7 @@ static void d_srv_connect(void *ctx)
 
 static void srv_close(pcb_dev *p)
 {
-    if (p->srv_fd != SOCK_INVALID)
-    {
+    if (p->srv_fd != SOCK_INVALID) {
         sock_close(p->srv_fd);
         p->srv_fd = SOCK_INVALID;
     }
@@ -362,16 +385,19 @@ static void d_log(void *ctx, const char *line)
 static pcb_dev *dev_find(const gc_u8 addr[6])
 {
     int i;
-    for (i = 0; i < PCB_MAX_DEVICES; i++)
-    {
-        if (g_dev[i] && memcmp(g_dev[i]->addr, addr, 6) == 0) return g_dev[i];
+    for (i = 0; i < PCB_MAX_DEVICES; i++) {
+        if (g_dev[i] && memcmp(g_dev[i]->addr, addr, 6) == 0) {
+            return g_dev[i];
+        }
     }
     return NULL;
 }
 
 static void dev_free(pcb_dev *p)
 {
-    if (p->dev_fd != SOCK_INVALID) sock_close(p->dev_fd);
+    if (p->dev_fd != SOCK_INVALID) {
+        sock_close(p->dev_fd);
+    }
     pcb_com_close(p->com);
     out_free(&p->dev_out);
     srv_close(p);
@@ -382,33 +408,35 @@ static void dev_free(pcb_dev *p)
 
 static pcb_dev *dev_new(const gc_u8 addr[6], gc_u32 now)
 {
-    int        i;
-    pcb_dev   *p;
+    int i;
+    pcb_dev *p;
     bridge_cfg bc;
-    bridge_io  io;
-    if (g_ndev >= g_cfg.max_devices)
-    {
+    bridge_io io;
+    if (g_ndev >= g_cfg.max_devices) {
         /* full: an N-Gage that is present wins over one that is away */
         pcb_dev *old = NULL;
-        for (i = 0; i < PCB_MAX_DEVICES; i++)
-        {
+        for (i = 0; i < PCB_MAX_DEVICES; i++) {
             pcb_dev *q = g_dev[i];
             if (q && q->dev_fd == SOCK_INVALID && !q->com_name[0] &&
-                (!old || (gc_u32)(now - q->t_gone) > (gc_u32)(now - old->t_gone)))
-            {
+                (!old || (gc_u32)(now - q->t_gone) > (gc_u32)(now - old->t_gone))) {
                 old = q;
             }
         }
-        if (!old) return NULL;
+        if (!old) {
+            return NULL;
+        }
         logmsg(2, "N-Gage %s removed to make room", old->addr_str);
         dev_free(old);
     }
-    for (i = 0; i < PCB_MAX_DEVICES && g_dev[i]; i++)
-    {
+    for (i = 0; i < PCB_MAX_DEVICES && g_dev[i]; i++) {
     }
-    if (i == PCB_MAX_DEVICES) return NULL;
+    if (i == PCB_MAX_DEVICES) {
+        return NULL;
+    }
     p = (pcb_dev *)calloc(1, sizeof(*p));
-    if (!p) return NULL;
+    if (!p) {
+        return NULL;
+    }
     p->used = 1;
     p->index = i;
     memcpy(p->addr, addr, 6);
@@ -417,7 +445,9 @@ static pcb_dev *dev_new(const gc_u8 addr[6], gc_u32 now)
     p->srv_fd = SOCK_INVALID;
     bridge_default_cfg(&bc);
     bc.server_link_id = ((gc_u32)rand() << 16) ^ (gc_u32)rand() ^ now ^ (gc_u32)i;
-    if (bc.server_link_id == 0) bc.server_link_id = 1;
+    if (bc.server_link_id == 0) {
+        bc.server_link_id = 1;
+    }
     copy_str(bc.access_key, sizeof(bc.access_key), g_cfg.key);
     io.dev_write = d_dev_write;
     io.srv_write = d_srv_write;
@@ -433,7 +463,9 @@ static pcb_dev *dev_new(const gc_u8 addr[6], gc_u32 now)
 
 static void dev_lost(pcb_dev *p, gc_u32 now, const char *why)
 {
-    if (p->dev_fd == SOCK_INVALID) return;
+    if (p->dev_fd == SOCK_INVALID) {
+        return;
+    }
     sock_close(p->dev_fd);
     p->dev_fd = SOCK_INVALID;
     out_free(&p->dev_out);
@@ -446,20 +478,16 @@ static void dev_lost(pcb_dev *p, gc_u32 now, const char *why)
 static void dev_accepted(sock_t s, const gc_u8 addr[6], gc_u32 now)
 {
     pcb_dev *p = dev_find(addr);
-    int      one = 1;
-    if (!p)
-    {
+    int one = 1;
+    if (!p) {
         p = dev_new(addr, now);
-        if (!p)
-        {
+        if (!p) {
             logmsg(1, "N-Gage %02x:%02x:%02x:%02x:%02x:%02x refused: %d devices connected (max_devices)", addr[0],
                    addr[1], addr[2], addr[3], addr[4], addr[5], g_ndev);
             sock_close(s);
             return;
         }
-    }
-    else if (p->dev_fd != SOCK_INVALID)
-    {
+    } else if (p->dev_fd != SOCK_INVALID) {
         dev_lost(p, now, "replaced by a new connection");
     }
     set_nonblocking(s);
@@ -476,8 +504,7 @@ static void com_open(pcb_dev *p, gc_u32 now)
     char err[160];
     p->t_com_retry = now;
     p->com = pcb_com_open(p->com_name, err, sizeof(err));
-    if (!p->com)
-    {
+    if (!p->com) {
         logmsg(1, "%s (retrying)", err);
         return;
     }
@@ -505,50 +532,54 @@ static void com_fail(pcb_dev *p, gc_u32 now)
 static void com_service(pcb_dev *p, gc_u32 now)
 {
     gc_u8 buf[1024];
-    int   n, up;
-    if (!p->com)
-    {
-        if ((gc_u32)(now - p->t_com_retry) >= 3000) com_open(p, now);
-        if (!p->com) return;
+    int n, up;
+    if (!p->com) {
+        if ((gc_u32)(now - p->t_com_retry) >= 3000) {
+            com_open(p, now);
+        }
+        if (!p->com) {
+            return;
+        }
     }
     {
         int lines = pcb_com_lines(p->com);
-        if (lines != p->com_lines)
-        {
+        if (lines != p->com_lines) {
             /* carrier detect / DSR come up when a device connects to the port */
             logmsg(2, "%s: lines CTS %d DSR %d RING %d CD %d", p->com_name, lines & 1, (lines >> 1) & 1,
                    (lines >> 2) & 1, (lines >> 3) & 1);
             p->com_lines = lines;
         }
     }
-    while ((n = pcb_com_read(p->com, buf, sizeof(buf))) > 0)
-    {
+    while ((n = pcb_com_read(p->com, buf, sizeof(buf))) > 0) {
         int st = p->br.dev.state;
-        if (st != GC_LS_UP && !p->com_rx_seen)
-        {
+        if (st != GC_LS_UP && !p->com_rx_seen) {
             p->com_rx_seen = 1;
             logmsg(2, "%s: receiving data (%d bytes), waiting for the N-Gage's handshake", p->com_name, n);
         }
         logmsg(3, "%s: %d bytes in", p->com_name, n);
-        if (st != GC_LS_UP && st != GC_LS_WAIT_HELLO && st != GC_LS_IDLE)
-        {
+        if (st != GC_LS_UP && st != GC_LS_WAIT_HELLO && st != GC_LS_IDLE) {
             bridge_dev_connected(&p->br, p->addr, now); /* listen for a new HELLO */
         }
         bridge_dev_input(&p->br, buf, (size_t)n, now);
     }
-    if (n < 0) p->dev_error = 1;
-    if (!p->dev_error) com_flush(p);
-    if (p->dev_error)
-    {
+    if (n < 0) {
+        p->dev_error = 1;
+    }
+    if (!p->dev_error) {
+        com_flush(p);
+    }
+    if (p->dev_error) {
         com_fail(p, now);
         return;
     }
     up = p->br.dev.state == GC_LS_UP;
-    if (up != p->com_up)
-    {
+    if (up != p->com_up) {
         p->com_up = up;
-        if (up) logmsg(2, "N-Gage connected on %s", p->com_name);
-        else logmsg(2, "N-Gage on %s is gone", p->com_name);
+        if (up) {
+            logmsg(2, "N-Gage connected on %s", p->com_name);
+        } else {
+            logmsg(2, "N-Gage on %s is gone", p->com_name);
+        }
         p->com_rx_seen = 0;
     }
 }
@@ -556,27 +587,36 @@ static void com_service(pcb_dev *p, gc_u32 now)
 static int com_setup(gc_u32 now)
 {
     const char *c = g_cfg.com;
-    int         n = 0;
-    while (*c && n < PCB_MAX_DEVICES)
-    {
+    int n = 0;
+    while (*c && n < PCB_MAX_DEVICES) {
         char name[64];
         size_t k = 0;
-        while (*c == ',' || *c == ' ' || *c == ';') c++;
-        while (*c && *c != ',' && *c != ' ' && *c != ';' && k + 1 < sizeof(name)) name[k++] = *c++;
+        while (*c == ',' || *c == ' ' || *c == ';') {
+            c++;
+        }
+        while (*c && *c != ',' && *c != ' ' && *c != ';' && k + 1 < sizeof(name)) {
+            name[k++] = *c++;
+        }
         name[k] = '\0';
-        if (k == 0) break;
+        if (k == 0) {
+            break;
+        }
         {
-        /* made-up address 02:47:43:43:4f:nn per port, so that the server
-           recognises the same N-Gage after a reconnect */
-        gc_u8    addr[6] = {0x02, 0x47, 0x43, 0x43, 0x4f, 0};
-        pcb_dev *p;
-        addr[5] = (gc_u8)n;
-        if (g_cfg.max_devices < n + 1) g_cfg.max_devices = n + 1;
-        p = dev_new(addr, now);
-        if (!p) break;
-        copy_str(p->com_name, sizeof(p->com_name), name);
-        com_open(p, now);
-        n++;
+            /* made-up address 02:47:43:43:4f:nn per port, so that the server
+               recognises the same N-Gage after a reconnect */
+            gc_u8 addr[6] = { 0x02, 0x47, 0x43, 0x43, 0x4f, 0 };
+            pcb_dev *p;
+            addr[5] = (gc_u8)n;
+            if (g_cfg.max_devices < n + 1) {
+                g_cfg.max_devices = n + 1;
+            }
+            p = dev_new(addr, now);
+            if (!p) {
+                break;
+            }
+            copy_str(p->com_name, sizeof(p->com_name), name);
+            com_open(p, now);
+            n++;
         }
     }
     return n;
@@ -589,12 +629,13 @@ static int com_setup(gc_u32 now)
 static void discovery_send(gc_u32 now)
 {
     struct sockaddr_in to;
-    const char        *req = "GCDISCOVER1";
-    if (g_udp == SOCK_INVALID)
-    {
+    const char *req = "GCDISCOVER1";
+    if (g_udp == SOCK_INVALID) {
         int one = 1;
         g_udp = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (g_udp == SOCK_INVALID) return;
+        if (g_udp == SOCK_INVALID) {
+            return;
+        }
         setsockopt(g_udp, SOL_SOCKET, SO_BROADCAST, (const char *)&one, sizeof(one));
         set_nonblocking(g_udp);
     }
@@ -610,17 +651,17 @@ static void discovery_send(gc_u32 now)
 
 static void discovery_input(void)
 {
-    char               buf[128];
+    char buf[128];
     struct sockaddr_in from;
-    socklen_t          fl = sizeof(from);
-    int                n, port = 0;
+    socklen_t fl = sizeof(from);
+    int n, port = 0;
     n = (int)recvfrom(g_udp, buf, sizeof(buf) - 1, 0, (struct sockaddr *)&from, &fl);
-    if (n <= 0) return;
+    if (n <= 0) {
+        return;
+    }
     buf[n] = '\0';
-    if (sscanf(buf, "GCSERVER1 %d", &port) == 1 && port > 0 && port < 65536)
-    {
-        if (!g_have_found || g_found.sin_addr.s_addr != from.sin_addr.s_addr || g_found.sin_port != htons((unsigned short)port))
-        {
+    if (sscanf(buf, "GCSERVER1 %d", &port) == 1 && port > 0 && port < 65536) {
+        if (!g_have_found || g_found.sin_addr.s_addr != from.sin_addr.s_addr || g_found.sin_port != htons((unsigned short)port)) {
             char ip[64];
             inet_ntop(AF_INET, &from.sin_addr, ip, sizeof(ip));
             logmsg(2, "server found at %s:%d", ip, port);
@@ -638,33 +679,30 @@ static int is_auto(void)
 
 static void srv_start(pcb_dev *p, gc_u32 now)
 {
-    struct addrinfo  hints, *res = NULL, *ai;
+    struct addrinfo hints, *res = NULL, *ai;
     struct sockaddr *sa = NULL;
-    int              salen = 0, one = 1, rc;
-    sock_t           s;
-    char             ps[16];
+    int salen = 0, one = 1, rc;
+    sock_t s;
+    char ps[16];
 
     p->srv_wanted = 0;
     srv_close(p);
-    if (is_auto())
-    {
-        if (!g_have_found)
-        {
-            if ((gc_u32)(now - g_t_discover) > 500) discovery_send(now);
+    if (is_auto()) {
+        if (!g_have_found) {
+            if ((gc_u32)(now - g_t_discover) > 500) {
+                discovery_send(now);
+            }
             bridge_srv_disconnected(&p->br, now); /* retried with back-off */
             return;
         }
         sa = (struct sockaddr *)&g_found;
         salen = sizeof(g_found);
-    }
-    else
-    {
+    } else {
         memset(&hints, 0, sizeof(hints));
         hints.ai_socktype = SOCK_STREAM;
         hints.ai_family = AF_UNSPEC;
         sprintf(ps, "%d", g_cfg.port);
-        if (getaddrinfo(g_cfg.server, ps, &hints, &res) != 0 || !res)
-        {
+        if (getaddrinfo(g_cfg.server, ps, &hints, &res) != 0 || !res) {
             logmsg(1, "cannot resolve server '%s'", g_cfg.server);
             bridge_srv_disconnected(&p->br, now);
             return;
@@ -674,51 +712,50 @@ static void srv_start(pcb_dev *p, gc_u32 now)
         salen = (int)ai->ai_addrlen;
     }
     s = socket(sa->sa_family, SOCK_STREAM, IPPROTO_TCP);
-    if (s == SOCK_INVALID)
-    {
-        if (res) freeaddrinfo(res);
+    if (s == SOCK_INVALID) {
+        if (res) {
+            freeaddrinfo(res);
+        }
         bridge_srv_disconnected(&p->br, now);
         return;
     }
     set_nonblocking(s);
     setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char *)&one, sizeof(one));
     rc = connect(s, sa, salen);
-    if (res) freeaddrinfo(res);
+    if (res) {
+        freeaddrinfo(res);
+    }
     p->srv_fd = s;
-    if (rc == 0)
-    {
+    if (rc == 0) {
         p->srv_up = 1;
         bridge_srv_connected(&p->br, now);
-    }
-    else if (SOCK_EINPROGRESS(sock_err()))
-    {
+    } else if (SOCK_EINPROGRESS(sock_err())) {
         p->srv_connecting = 1;
-    }
-    else
-    {
+    } else {
         srv_close(p);
-        if (is_auto()) g_have_found = 0;
+        if (is_auto()) {
+            g_have_found = 0;
+        }
         bridge_srv_disconnected(&p->br, now);
     }
 }
 
 static void srv_connect_done(pcb_dev *p, gc_u32 now)
 {
-    int       err = 0;
+    int err = 0;
     socklen_t len = sizeof(err);
     getsockopt(p->srv_fd, SOL_SOCKET, SO_ERROR, (char *)&err, &len);
     p->srv_connecting = 0;
-    if (err == 0)
-    {
+    if (err == 0) {
         p->srv_up = 1;
         logmsg(3, "[%s] server connection established", p->addr_str);
         bridge_srv_connected(&p->br, now);
-    }
-    else
-    {
+    } else {
         logmsg(3, "[%s] server connection failed (%d)", p->addr_str, err);
         srv_close(p);
-        if (is_auto()) g_have_found = 0; /* search again */
+        if (is_auto()) {
+            g_have_found = 0; /* search again */
+        }
         bridge_srv_disconnected(&p->br, now);
     }
 }
@@ -730,15 +767,15 @@ static void srv_connect_done(pcb_dev *p, gc_u32 now)
 static void print_status(void)
 {
     int i;
-    if (g_ndev == 0)
-    {
+    if (g_ndev == 0) {
         logmsg(2, "status: no N-Gage connected");
         return;
     }
-    for (i = 0; i < PCB_MAX_DEVICES; i++)
-    {
+    for (i = 0; i < PCB_MAX_DEVICES; i++) {
         pcb_dev *p = g_dev[i];
-        if (!p) continue;
+        if (!p) {
+            continue;
+        }
         logmsg(2, "status: N-Gage %s %s, server %s, messages to server %lu, from server %lu", p->addr_str,
                (p->dev_fd != SOCK_INVALID || p->com_up) ? "connected" : "away", p->br.srv_state == GC_BS_UP ? "up" : "down",
                (unsigned long)p->br.st_dev_msgs, (unsigned long)p->br.st_srv_msgs);
@@ -767,16 +804,17 @@ static void on_signal(int sig)
 static sock_t tcp_listener(int port)
 {
     struct sockaddr_in a;
-    int                one = 1;
-    sock_t             s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    if (s == SOCK_INVALID) return s;
+    int one = 1;
+    sock_t s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (s == SOCK_INVALID) {
+        return s;
+    }
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char *)&one, sizeof(one));
     memset(&a, 0, sizeof(a));
     a.sin_family = AF_INET;
     a.sin_port = htons((unsigned short)port);
     a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    if (bind(s, (struct sockaddr *)&a, sizeof(a)) != 0 || listen(s, 8) != 0)
-    {
+    if (bind(s, (struct sockaddr *)&a, sizeof(a)) != 0 || listen(s, 8) != 0) {
         sock_close(s);
         return SOCK_INVALID;
     }
@@ -787,23 +825,28 @@ static sock_t tcp_listener(int port)
 /* gcbridge.ini in the current folder, else next to the program */
 static int load_default_config(const char *argv0)
 {
-    char  path[1024];
+    char path[1024];
     char *slash;
     FILE *f = fopen("gcbridge.ini", "r");
-    if (f)
-    {
+    if (f) {
         fclose(f);
         return config_load(&g_cfg, "gcbridge.ini", 1);
     }
 #ifdef _WIN32
-    if (GetModuleFileNameA(NULL, path, sizeof(path)) == 0) return 0;
+    if (GetModuleFileNameA(NULL, path, sizeof(path)) == 0) {
+        return 0;
+    }
     (void)argv0;
 #else
     copy_str(path, sizeof(path), argv0);
 #endif
     slash = strrchr(path, '\\');
-    if (!slash) slash = strrchr(path, '/');
-    if (!slash) return 0;
+    if (!slash) {
+        slash = strrchr(path, '/');
+    }
+    if (!slash) {
+        return 0;
+    }
     copy_str(slash + 1, sizeof(path) - (size_t)(slash + 1 - path), "gcbridge.ini");
     return config_load(&g_cfg, path, 0);
 }
@@ -813,8 +856,7 @@ static int fail_exit(int rc)
 {
 #ifdef _WIN32
     DWORD pids[2];
-    if (GetConsoleProcessList(pids, 2) == 1)
-    {
+    if (GetConsoleProcessList(pids, 2) == 1) {
         printf("\nPress Enter to close this window.\n");
         getchar();
     }
@@ -845,14 +887,13 @@ static void usage(void)
 
 int main(int argc, char **argv)
 {
-    sock_t     tcp_l = SOCK_INVALID;
-    gc_u32     t_status;
-    int        i, bt_ok = 0, ncom = 0;
+    sock_t tcp_l = SOCK_INVALID;
+    gc_u32 t_status;
+    int i, bt_ok = 0, ncom = 0;
     const char *cfgfile = NULL;
 #ifdef _WIN32
     WSADATA w;
-    if (WSAStartup(MAKEWORD(2, 2), &w) != 0)
-    {
+    if (WSAStartup(MAKEWORD(2, 2), &w) != 0) {
         fprintf(stderr, "Winsock initialisation failed\n");
         return 1;
     }
@@ -864,133 +905,147 @@ int main(int argc, char **argv)
 #endif
 
     config_defaults(&g_cfg);
-    for (i = 1; i < argc; i++)
-    {
-        if (!strcmp(argv[i], "-c") && i + 1 < argc) cfgfile = argv[++i];
-        else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) { usage(); return 0; }
+    for (i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-c") && i + 1 < argc) {
+            cfgfile = argv[++i];
+        } else if (!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help")) {
+            usage();
+            return 0;
+        }
     }
-    if ((cfgfile ? config_load(&g_cfg, cfgfile, 1) : load_default_config(argv[0])) != 0) return fail_exit(1);
-    for (i = 1; i < argc; i++)
-    {
+    if ((cfgfile ? config_load(&g_cfg, cfgfile, 1) : load_default_config(argv[0])) != 0) {
+        return fail_exit(1);
+    }
+    for (i = 1; i < argc; i++) {
         char k[64], *eq;
-        if (!strcmp(argv[i], "-c")) { i++; continue; }
-        if (strncmp(argv[i], "--", 2) != 0 || !(eq = strchr(argv[i], '=')) || (size_t)(eq - argv[i] - 2) >= sizeof(k))
-        {
+        if (!strcmp(argv[i], "-c")) {
+            i++;
+            continue;
+        }
+        if (strncmp(argv[i], "--", 2) != 0 || !(eq = strchr(argv[i], '=')) || (size_t)(eq - argv[i] - 2) >= sizeof(k)) {
             usage();
             return 2;
         }
         memcpy(k, argv[i] + 2, (size_t)(eq - argv[i] - 2));
         k[eq - argv[i] - 2] = '\0';
-        if (config_set(&g_cfg, k, eq + 1) != 0)
-        {
+        if (config_set(&g_cfg, k, eq + 1) != 0) {
             fprintf(stderr, "unknown option --%s\n", k);
             usage();
             return 2;
         }
     }
-    if (g_cfg.max_devices < 1) g_cfg.max_devices = 1;
-    if (g_cfg.max_devices > PCB_MAX_DEVICES) g_cfg.max_devices = PCB_MAX_DEVICES;
+    if (g_cfg.max_devices < 1) {
+        g_cfg.max_devices = 1;
+    }
+    if (g_cfg.max_devices > PCB_MAX_DEVICES) {
+        g_cfg.max_devices = PCB_MAX_DEVICES;
+    }
     srand((unsigned)time(NULL) ^ (unsigned)now_ms());
 
     logmsg(2, "GameComms PC bridge %s, server %s%s%d, up to %d N-Gages", PCB_VERSION, g_cfg.server,
            is_auto() ? " (local network), port " : ":", g_cfg.port, g_cfg.max_devices);
 
-    if (g_cfg.com[0])
-    {
+    if (g_cfg.com[0]) {
         /* Windows answers the N-Gage itself; a second Serial Port service
            of our own would only confuse the N-Gage's service search */
         ncom = com_setup(now_ms());
         logmsg(2, "COM mode: the bridge's own Bluetooth service is not used");
-    }
-    else if (g_cfg.bluetooth)
-    {
+    } else if (g_cfg.bluetooth) {
         pcb_bt_cfg bc;
-        char       err[256];
+        char err[256];
         bc.service_name = g_cfg.name;
         bc.pin = g_cfg.pin;
         bc.channel = g_cfg.channel;
         bc.adapter = g_cfg.adapter;
         bc.log = logmsg;
-        if (pcb_bt_open(&bc, err, sizeof(err)) == 0)
-        {
+        if (pcb_bt_open(&bc, err, sizeof(err)) == 0) {
             bt_ok = 1;
-        }
-        else
-        {
+        } else {
             logmsg(0, "%s", err);
         }
     }
-    if (g_cfg.device_tcp > 0)
-    {
+    if (g_cfg.device_tcp > 0) {
         tcp_l = tcp_listener(g_cfg.device_tcp);
-        if (tcp_l == SOCK_INVALID)
-        {
+        if (tcp_l == SOCK_INVALID) {
             logmsg(0, "cannot listen on TCP port %d for test devices", g_cfg.device_tcp);
-        }
-        else
-        {
+        } else {
             logmsg(2, "test devices accepted on 127.0.0.1:%d", g_cfg.device_tcp);
         }
     }
-    if (!bt_ok && tcp_l == SOCK_INVALID && ncom == 0)
-    {
+    if (!bt_ok && tcp_l == SOCK_INVALID && ncom == 0) {
         logmsg(0, "nothing to listen on, exiting");
         return fail_exit(1);
     }
-    if (bt_ok || ncom)
-    {
+    if (bt_ok || ncom) {
         logmsg(2, "ready: on the N-Gage, start a multiplayer game and select this PC");
     }
-    if (is_auto()) discovery_send(now_ms());
+    if (is_auto()) {
+        discovery_send(now_ms());
+    }
     t_status = now_ms();
 
-    while (!g_stop)
-    {
-        fd_set         rs, ws, es;
+    while (!g_stop) {
+        fd_set rs, ws, es;
         struct timeval tv;
-        gc_u32         now = now_ms(), wait = 50;
-        int            maxfd = 0, nsock = 0;
-        sock_t         bl = pcb_bt_listener();
+        gc_u32 now = now_ms(), wait = 50;
+        int maxfd = 0, nsock = 0;
+        sock_t bl = pcb_bt_listener();
 
-#define ADD(set, s)                                   \
-    do                                                \
-    {                                                 \
-        FD_SET((s), (set));                           \
-        if ((int)(s) > maxfd) maxfd = (int)(s);       \
-        nsock++;                                      \
+#define ADD(set, s)           \
+    do {                      \
+        FD_SET((s), (set));   \
+        if ((int)(s) > maxfd) \
+            maxfd = (int)(s); \
+        nsock++;              \
     } while (0)
 
         FD_ZERO(&rs);
         FD_ZERO(&ws);
         FD_ZERO(&es);
-        if (bl != SOCK_INVALID) ADD(&rs, bl);
-        if (tcp_l != SOCK_INVALID) ADD(&rs, tcp_l);
-        if (g_udp != SOCK_INVALID) ADD(&rs, g_udp);
-        for (i = 0; i < PCB_MAX_DEVICES; i++)
-        {
+        if (bl != SOCK_INVALID) {
+            ADD(&rs, bl);
+        }
+        if (tcp_l != SOCK_INVALID) {
+            ADD(&rs, tcp_l);
+        }
+        if (g_udp != SOCK_INVALID) {
+            ADD(&rs, g_udp);
+        }
+        for (i = 0; i < PCB_MAX_DEVICES; i++) {
             pcb_dev *p = g_dev[i];
-            gc_u32   t;
-            if (!p) continue;
-            if (p->dev_fd != SOCK_INVALID)
-            {
-                ADD(&rs, p->dev_fd);
-                if (p->dev_out.len) ADD(&ws, p->dev_fd);
+            gc_u32 t;
+            if (!p) {
+                continue;
             }
-            if (p->srv_fd != SOCK_INVALID)
-            {
-                if (p->srv_connecting || p->srv_out.len) ADD(&ws, p->srv_fd);
+            if (p->dev_fd != SOCK_INVALID) {
+                ADD(&rs, p->dev_fd);
+                if (p->dev_out.len) {
+                    ADD(&ws, p->dev_fd);
+                }
+            }
+            if (p->srv_fd != SOCK_INVALID) {
+                if (p->srv_connecting || p->srv_out.len) {
+                    ADD(&ws, p->srv_fd);
+                }
                 /* Windows reports a failed connect in the exception set */
-                if (p->srv_connecting) ADD(&es, p->srv_fd);
-                if (p->srv_up) ADD(&rs, p->srv_fd);
+                if (p->srv_connecting) {
+                    ADD(&es, p->srv_fd);
+                }
+                if (p->srv_up) {
+                    ADD(&rs, p->srv_fd);
+                }
             }
             t = bridge_next_timeout(&p->br, now);
-            if (t < wait) wait = t;
-            if (p->com_name[0] && wait > 5) wait = 5; /* serial ports are polled */
+            if (t < wait) {
+                wait = t;
+            }
+            if (p->com_name[0] && wait > 5) {
+                wait = 5; /* serial ports are polled */
+            }
         }
         tv.tv_sec = 0;
         tv.tv_usec = (long)(wait ? wait : 1) * 1000;
-        if (nsock == 0)
-        {
+        if (nsock == 0) {
             /* Windows' select() refuses empty sets */
 #ifdef _WIN32
             Sleep(wait ? wait : 1);
@@ -1000,9 +1055,7 @@ int main(int argc, char **argv)
             ts.tv_nsec = (long)(wait ? wait : 1) * 1000000L;
             nanosleep(&ts, NULL);
 #endif
-        }
-        else if (select(maxfd + 1, &rs, &ws, &es, &tv) < 0)
-        {
+        } else if (select(maxfd + 1, &rs, &ws, &es, &tv) < 0) {
 #ifdef _WIN32
             Sleep(10);
 #endif
@@ -1012,103 +1065,124 @@ int main(int argc, char **argv)
         }
         now = now_ms();
 
-        if (bl != SOCK_INVALID && FD_ISSET(bl, &rs))
-        {
-            gc_u8  addr[6];
+        if (bl != SOCK_INVALID && FD_ISSET(bl, &rs)) {
+            gc_u8 addr[6];
             sock_t s;
-            while ((s = pcb_bt_accept(addr)) != SOCK_INVALID) dev_accepted(s, addr, now);
+            while ((s = pcb_bt_accept(addr)) != SOCK_INVALID) {
+                dev_accepted(s, addr, now);
+            }
         }
-        if (tcp_l != SOCK_INVALID && FD_ISSET(tcp_l, &rs))
-        {
+        if (tcp_l != SOCK_INVALID && FD_ISSET(tcp_l, &rs)) {
             struct sockaddr_in from;
-            socklen_t          fl = sizeof(from);
-            sock_t             s = accept(tcp_l, (struct sockaddr *)&from, &fl);
-            if (s != SOCK_INVALID)
-            {
+            socklen_t fl = sizeof(from);
+            sock_t s = accept(tcp_l, (struct sockaddr *)&from, &fl);
+            if (s != SOCK_INVALID) {
                 /* test devices get the address 02:47:43:54:pp:pp, pp = their
                    TCP source port, so a reconnect from the same port looks
                    like the same N-Gage coming back */
-                gc_u8 addr[6] = {0x02, 0x47, 0x43, 0x54, 0, 0};
+                gc_u8 addr[6] = { 0x02, 0x47, 0x43, 0x54, 0, 0 };
                 unsigned short sp = ntohs(from.sin_port);
                 addr[4] = (gc_u8)(sp >> 8);
                 addr[5] = (gc_u8)(sp & 0xFF);
                 dev_accepted(s, addr, now);
             }
         }
-        if (g_udp != SOCK_INVALID && FD_ISSET(g_udp, &rs)) discovery_input();
+        if (g_udp != SOCK_INVALID && FD_ISSET(g_udp, &rs)) {
+            discovery_input();
+        }
 
-        for (i = 0; i < PCB_MAX_DEVICES; i++)
-        {
+        for (i = 0; i < PCB_MAX_DEVICES; i++) {
             pcb_dev *p = g_dev[i];
-            if (!p) continue;
+            if (!p) {
+                continue;
+            }
 
             /* N-Gage side */
-            if (p->com_name[0]) com_service(p, now);
-            if (p->dev_fd != SOCK_INVALID && FD_ISSET(p->dev_fd, &rs))
-            {
-                gc_u8 buf[4096];
-                int   n = (int)recv(p->dev_fd, (char *)buf, sizeof(buf), 0);
-                if (n > 0) bridge_dev_input(&p->br, buf, (size_t)n, now);
-                else if (n == 0 || !SOCK_EAGAIN(sock_err())) dev_lost(p, now, "connection closed");
+            if (p->com_name[0]) {
+                com_service(p, now);
             }
-            if (p->dev_fd != SOCK_INVALID && FD_ISSET(p->dev_fd, &ws) && out_flush(p->dev_fd, &p->dev_out) != 0)
+            if (p->dev_fd != SOCK_INVALID && FD_ISSET(p->dev_fd, &rs)) {
+                gc_u8 buf[4096];
+                int n = (int)recv(p->dev_fd, (char *)buf, sizeof(buf), 0);
+                if (n > 0) {
+                    bridge_dev_input(&p->br, buf, (size_t)n, now);
+                } else if (n == 0 || !SOCK_EAGAIN(sock_err())) {
+                    dev_lost(p, now, "connection closed");
+                }
+            }
+            if (p->dev_fd != SOCK_INVALID && FD_ISSET(p->dev_fd, &ws) && out_flush(p->dev_fd, &p->dev_out) != 0) {
                 p->dev_error = 1;
-            if (p->dev_error) dev_lost(p, now, "write error");
+            }
+            if (p->dev_error) {
+                dev_lost(p, now, "write error");
+            }
 
             /* server side */
-            if (p->srv_fd != SOCK_INVALID && p->srv_connecting && (FD_ISSET(p->srv_fd, &ws) || FD_ISSET(p->srv_fd, &es)))
+            if (p->srv_fd != SOCK_INVALID && p->srv_connecting && (FD_ISSET(p->srv_fd, &ws) || FD_ISSET(p->srv_fd, &es))) {
                 srv_connect_done(p, now);
-            else if (p->srv_fd != SOCK_INVALID && p->srv_up)
-            {
-                if (FD_ISSET(p->srv_fd, &rs))
-                {
+            } else if (p->srv_fd != SOCK_INVALID && p->srv_up) {
+                if (FD_ISSET(p->srv_fd, &rs)) {
                     gc_u8 buf[8192];
-                    int   n = (int)recv(p->srv_fd, (char *)buf, sizeof(buf), 0);
-                    if (n > 0) bridge_srv_input(&p->br, buf, (size_t)n, now);
-                    else if (n == 0 || !SOCK_EAGAIN(sock_err())) p->srv_error = 1;
+                    int n = (int)recv(p->srv_fd, (char *)buf, sizeof(buf), 0);
+                    if (n > 0) {
+                        bridge_srv_input(&p->br, buf, (size_t)n, now);
+                    } else if (n == 0 || !SOCK_EAGAIN(sock_err())) {
+                        p->srv_error = 1;
+                    }
                 }
-                if (p->srv_fd != SOCK_INVALID && FD_ISSET(p->srv_fd, &ws) && out_flush(p->srv_fd, &p->srv_out) != 0)
+                if (p->srv_fd != SOCK_INVALID && FD_ISSET(p->srv_fd, &ws) && out_flush(p->srv_fd, &p->srv_out) != 0) {
                     p->srv_error = 1;
+                }
             }
-            if (p->srv_error)
-            {
+            if (p->srv_error) {
                 logmsg(3, "[%s] server connection lost", p->addr_str);
                 srv_close(p);
                 bridge_srv_disconnected(&p->br, now);
             }
-            if (p->srv_wanted) srv_start(p, now);
+            if (p->srv_wanted) {
+                srv_start(p, now);
+            }
 
             bridge_poll(&p->br, now);
-            if (p->srv_wanted) srv_start(p, now);
-            if (p->dev_error) dev_lost(p, now, "write error");
+            if (p->srv_wanted) {
+                srv_start(p, now);
+            }
+            if (p->dev_error) {
+                dev_lost(p, now, "write error");
+            }
 
             /* forget an N-Gage that did not come back */
             if (p->dev_fd == SOCK_INVALID && !p->com_name[0] && !p->br.dev_lost_pending &&
-                (gc_u32)(now - p->t_gone) > p->br.cfg.device_grace_ms + PCB_FREE_AFTER_MS)
-            {
+                (gc_u32)(now - p->t_gone) > p->br.cfg.device_grace_ms + PCB_FREE_AFTER_MS) {
                 logmsg(2, "N-Gage %s removed", p->addr_str);
                 dev_free(p);
             }
         }
 
         /* keep looking for the server while it is unknown */
-        if (is_auto() && !g_have_found && g_ndev > 0 && (gc_u32)(now - g_t_discover) > 2000) discovery_send(now);
+        if (is_auto() && !g_have_found && g_ndev > 0 && (gc_u32)(now - g_t_discover) > 2000) {
+            discovery_send(now);
+        }
 
-        if ((gc_u32)(now - t_status) > 60000)
-        {
+        if ((gc_u32)(now - t_status) > 60000) {
             t_status = now;
             print_status();
         }
     }
 
     logmsg(2, "stopping");
-    for (i = 0; i < PCB_MAX_DEVICES; i++)
-    {
-        if (g_dev[i]) dev_free(g_dev[i]);
+    for (i = 0; i < PCB_MAX_DEVICES; i++) {
+        if (g_dev[i]) {
+            dev_free(g_dev[i]);
+        }
     }
     pcb_bt_close();
-    if (tcp_l != SOCK_INVALID) sock_close(tcp_l);
-    if (g_udp != SOCK_INVALID) sock_close(g_udp);
+    if (tcp_l != SOCK_INVALID) {
+        sock_close(tcp_l);
+    }
+    if (g_udp != SOCK_INVALID) {
+        sock_close(g_udp);
+    }
 #ifdef _WIN32
     WSACleanup();
 #endif

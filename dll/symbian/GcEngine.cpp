@@ -119,9 +119,9 @@ void CGcEngine::ConstructL(TUint8 aApi, TUint8 aVariant, TUint32 aGameUid)
 
     TBuf8<96> line;
     line.Copy(_L8("GameComms replacement, api "));
-    line.AppendNum(aApi);
+    line.AppendNum((TInt)aApi);
     line.Append(_L8(" variant "));
-    line.AppendNum(aVariant);
+    line.AppendNum((TInt)aVariant);
     line.Append(_L8(" game uid "));
     line.AppendNum(aGameUid, EHex);
     line.Append(_L8(" bridge saved "));

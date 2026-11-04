@@ -44,11 +44,37 @@ static void io_close(void *ctx, gcs_conn *conn)
     (void)ctx;
     c->close_req = 1;
 }
+static int log_enabled(void)
+{
+#ifdef _MSC_VER
+    char *v = NULL;
+    size_t len = 0;
+    if (_dupenv_s(&v, &len, "GCS_TEST_LOG") != 0 || v == NULL) {
+        return 0;
+    }
+    free(v);
+    return 1;
+#else
+    return getenv("GCS_TEST_LOG") != NULL;
+#endif
+}
+
+/* bounded, always NUL-terminated copy */
+static void copy_str(char *dst, size_t cap, const char *src)
+{
+    size_t n = strlen(src);
+    if (n >= cap) {
+        n = cap - 1;
+    }
+    memcpy(dst, src, n);
+    dst[n] = 0;
+}
+
 static void io_log(void *ctx, int lvl, const char *line)
 {
     (void)ctx;
     (void)lvl;
-    if (getenv("GCS_TEST_LOG")) {
+    if (log_enabled()) {
         printf("    | %s\n", line);
     }
 }
@@ -152,7 +178,7 @@ static void new_client(int i, const char *name)
     gc_link_ops ops;
     client *c = &C[i];
     memset(c, 0, sizeof(*c));
-    strcpy(c->name, name);
+    copy_str(c->name, sizeof(c->name), name);
     c->devid[0] = 0x00;
     c->devid[1] = 0x0e;
     c->devid[5] = (gc_u8)(i + 1);
@@ -175,7 +201,7 @@ static void do_register(int i, gc_u8 api)
     m.u.reg.api = api;
     m.u.reg.variant = 6;
     memcpy(m.u.reg.device_id, C[i].devid, 6);
-    strcpy(m.u.reg.name, C[i].name);
+    copy_str(m.u.reg.name, sizeof(m.u.reg.name), C[i].name);
     send_msg(&C[i], &m);
     pump(3);
 }
@@ -208,7 +234,7 @@ static gc_u32 host_open(int i, gc_u32 uid, gc_u8 api, gc_u8 maxp, gc_u8 flags)
     m.u.host_open.api = api;
     m.u.host_open.max_players = maxp;
     m.u.host_open.flags = flags;
-    strcpy(m.u.host_open.name, C[i].name);
+    copy_str(m.u.host_open.name, sizeof(m.u.host_open.name), C[i].name);
     send_msg(&C[i], &m);
     pump(3);
     r = find(&C[i], GC_MT_HOST_OPENED);
@@ -287,7 +313,7 @@ static void test_matchmaking_and_slots(void)
     reset_world();
     for (i = 0; i < 5; i++) {
         char n[8];
-        sprintf(n, "p%d", i);
+        snprintf(n, sizeof(n), "p%d", i);
         new_client(i, n);
         do_register(i, GC_API_V2);
     }
@@ -363,7 +389,7 @@ static void test_routing(void)
     reset_world();
     for (i = 0; i < 4; i++) {
         char n[8];
-        sprintf(n, "p%d", i);
+        snprintf(n, sizeof(n), "p%d", i);
         new_client(i, n);
         do_register(i, GC_API_V1);
     }
@@ -408,7 +434,7 @@ static void test_ordering_under_load(void)
     C[1].n_msgs = 0;
     for (k = 0; k < 60; k++) {
         char t[16];
-        sprintf(t, "%d", k);
+        snprintf(t, sizeof(t), "%d", k);
         while (gc_link_free_slots(&C[0].link) == 0) {
             pump(1);
         }
@@ -416,7 +442,7 @@ static void test_ordering_under_load(void)
         if (C[1].n_msgs > 50) {
             for (i = 0; i < C[1].n_msgs; i++) {
                 char e[16];
-                sprintf(e, "%d", k - C[1].n_msgs + 1 + i);
+                snprintf(e, sizeof(e), "%d", k - C[1].n_msgs + 1 + i);
                 (void)e;
             }
         }
@@ -425,7 +451,7 @@ static void test_ordering_under_load(void)
     CHECK(C[1].n_msgs == 60 || C[1].n_msgs == 64);
     for (i = 0; i < C[1].n_msgs && i < 60; i++) {
         char e[16];
-        sprintf(e, "%d", i);
+        snprintf(e, sizeof(e), "%d", i);
         if (memcmp(C[1].last[i].u.data.payload, e, strlen(e)) != 0) {
             ok = 0;
         }

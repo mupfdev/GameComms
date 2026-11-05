@@ -35,7 +35,7 @@ add_executable(gcbridge ${sources})
 target_include_directories(gcbridge PRIVATE ${GC_ROOT}/protocol/include ${GC_ROOT}/firmware/src src)
 
 if(WIN32)
-    target_link_libraries(gcbridge PRIVATE ws2_32)
+    target_link_libraries(gcbridge PRIVATE ws2_32 bcrypt)
     if(MINGW)
         target_link_options(gcbridge PRIVATE -static)
     endif()

@@ -116,6 +116,15 @@ fields, followed by one byte "resumed" (0 or 1).
   other side's state was lost.
 - The connecting side repeats HELLO every second until it gets an answer.
   A repeated HELLO for a link that is already up is answered again.
+- The link id is the only credential for resuming, so it must come from a
+  cryptographically secure random source. The server accepts exactly one
+  HELLO per transport connection (repeats of the same one excepted); a
+  different second HELLO closes the connection. A link whose old connection
+  is still open is only resumed from the same source address; otherwise the
+  resume waits until the old connection has been declared dead.
+- Once a CLOSE or REJECT has been processed, the rest of the same input is
+  ignored. A REJECT of an established link is reported to the owner as
+  closed.
 
 ### 2.3 Reliable delivery
 

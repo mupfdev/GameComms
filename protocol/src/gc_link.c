@@ -293,9 +293,17 @@ void gc_link_accept(gc_link *l, const gc_hello *h, int resume, gc_u32 now)
 
 void gc_link_reject(gc_link *l, gc_u8 reason)
 {
+    int was_established = l->state == GC_LS_UP || l->has_session;
+
     link_tx_frame(l, GC_FT_REJECT, 0, &reason, 1, l->t_last_tx);
     l->state = GC_LS_CLOSED;
     gc_link_forget(l);
+    gc_deframer_reset(&l->rx);
+    /* An established session that ends here must be reported; otherwise
+     * the owner keeps state for a link that silently stopped existing. */
+    if (was_established) {
+        link_notify(l, GC_LE_CLOSED, reason);
+    }
 }
 
 void gc_link_transport_lost(gc_link *l, gc_u32 now)
@@ -352,6 +360,12 @@ static void link_handle_frame(gc_link *l, const gc_u8 *body, size_t len, gc_u32 
     gc_hello h;
 
     if (len < GC_LINK_HDR_LEN) {
+        return;
+    }
+    /* A frame earlier in the same input buffer may have closed or dropped
+     * the link (CLOSE, REJECT, owner callback).  Nothing after that may be
+     * acted upon: the owner may already have released its state. */
+    if (l->state == GC_LS_CLOSED || l->state == GC_LS_DOWN || l->state == GC_LS_IDLE) {
         return;
     }
     type = body[0];

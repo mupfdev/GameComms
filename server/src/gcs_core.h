@@ -26,12 +26,19 @@ typedef struct gcs_core gcs_core;
 typedef struct gcs_peer gcs_peer;
 typedef struct gcs_session gcs_session;
 
+#define GCS_CONN_ADDR_MAX 64 /* >= NI_MAXHOST numeric form incl. IPv6 zone */
+
 /** A transport connection owned by the network layer. */
 typedef struct gcs_conn
 {
     void *net;      /* network layer handle */
     gcs_peer *peer; /* maintained by the core */
+    /** Source address of the transport (NUL terminated, may be empty).
+     *  Used to decide whether a connection may take over a link that is
+     *  still attached elsewhere; leave it zeroed if unknown. */
+    char addr[GCS_CONN_ADDR_MAX];
 } gcs_conn;
+#define GCS_CONN_HAS_ADDR 1
 
 typedef struct
 {
@@ -39,11 +46,13 @@ typedef struct
     char access_key[GC_MAX_NAME + 1]; /* empty: no key required */
     int max_peers;
     int max_sessions;
-    gc_u32 link_grace_ms; /* keep a silent peer's link for resumption */
-    gc_u32 reserve_ms;    /* keep a lost client's slot for rejoin      */
-    gc_u32 pending_ms;    /* how long a JOIN may wait for confirmation */
-    int max_outq;         /* queued messages per peer before dropping  */
-    int log_level;        /* 0 errors .. 3 debug                       */
+    gc_u32 link_grace_ms;    /* keep a silent peer's link for resumption */
+    gc_u32 reserve_ms;       /* keep a lost client's slot for rejoin      */
+    gc_u32 pending_ms;       /* how long a JOIN may wait for confirmation */
+    int max_outq;            /* queued messages per peer before dropping  */
+    int log_level;           /* 0 errors .. 3 debug                       */
+    gc_u32 hello_timeout_ms; /* drop connections without link handshake */
+    int max_auth_failures;   /* bad access keys per connection          */
 } gcs_config;
 
 typedef struct
@@ -59,6 +68,14 @@ typedef struct
 void gcs_default_config(gcs_config *cfg);
 
 gcs_core *gcs_core_create(const gcs_config *cfg, const gcs_io *io, void *io_ctx, gc_u32 seed);
+
+/** Optional source of unpredictable 32-bit values (e.g. the OS CSPRNG)
+ *  for session identifiers.  Without it the core falls back to a
+ *  deterministic generator seeded from gcs_core_create(), which is fine
+ *  for tests but makes session ids predictable. */
+typedef gc_u32 (*gcs_random_fn)(void *ctx);
+void gcs_core_set_random(gcs_core *core, gcs_random_fn fn, void *ctx);
+#define GCS_HAVE_SET_RANDOM 1
 void gcs_core_destroy(gcs_core *core);
 
 /** A new transport connection was accepted. */

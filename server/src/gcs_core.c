@@ -68,7 +68,11 @@ struct gcs_peer
     gcs_qmsg *q_head;
     gcs_qmsg *q_tail;
     int q_count;
-    int dead; /* scheduled for deletion */
+    int dead;          /* scheduled for deletion */
+    int doomed;        /* must be killed at the next safe point */
+    int hello_seen;    /* this connection already sent its HELLO */
+    int auth_failures; /* bad access keys on this connection */
+    gc_u32 t_created;
 };
 
 struct gcs_core
@@ -81,6 +85,8 @@ struct gcs_core
     gcs_session **sessions;
     int n_sessions;
     gc_u32 rng;
+    gcs_random_fn rand_fn;
+    void *rand_ctx;
     gc_u32 next_peer_id;
     gc_u32 next_seq;
     gc_u32 now;
@@ -90,6 +96,47 @@ struct gcs_core
 /* ------------------------------------------------------------------ */
 /* helpers                                                             */
 /* ------------------------------------------------------------------ */
+
+/* Replace control characters (C0, DEL) so that peer supplied strings can
+ * neither forge log lines nor inject terminal escape sequences. */
+static void sanitize_text(char *s)
+{
+    for (; *s; s++) {
+        if ((unsigned char)*s < 0x20 || *s == 0x7F) {
+            *s = '?';
+        }
+    }
+}
+
+/* Bounded copy into a GC_MAX_NAME + 1 buffer; always NUL terminated. */
+static void copy_name(char *dst, const char *src)
+{
+    size_t n = 0;
+    if (src) {
+        while (n < GC_MAX_NAME && src[n] != '\0') {
+            n++;
+        }
+        memcpy(dst, src, n);
+    }
+    dst[n] = '\0';
+}
+
+/* Constant-time comparison of two NUL terminated secrets (bounded). */
+static int secret_equal(const char *a, const char *b, size_t cap)
+{
+    size_t i;
+    unsigned diff = 0;
+    int ea = 0, eb = 0;
+
+    for (i = 0; i < cap; i++) {
+        unsigned char ca = ea ? 0 : (unsigned char)a[i];
+        unsigned char cb = eb ? 0 : (unsigned char)b[i];
+        diff |= (unsigned)(ca ^ cb);
+        ea |= ca == 0;
+        eb |= cb == 0;
+    }
+    return diff == 0;
+}
 
 static void logf_(gcs_core *c, int level, const char *fmt, ...)
 {
@@ -102,6 +149,8 @@ static void logf_(gcs_core *c, int level, const char *fmt, ...)
     va_start(ap, fmt);
     vsnprintf(line, sizeof(line), fmt, ap);
     va_end(ap);
+    line[sizeof(line) - 1] = '\0';
+    sanitize_text(line); /* names and texts come from the network */
     c->io.log(c->io_ctx, level, line);
 }
 
@@ -112,8 +161,12 @@ static void logf_(gcs_core *c, int level, const char *fmt, ...)
 
 static gc_u32 rnd(gcs_core *c)
 {
-    /* xorshift32; only used for identifiers, not for security */
-    gc_u32 x = c->rng;
+    gc_u32 x;
+    if (c->rand_fn) {
+        return c->rand_fn(c->rand_ctx); /* unpredictable ids (OS CSPRNG) */
+    }
+    /* deterministic fallback (tests): xorshift32 */
+    x = c->rng;
     x ^= x << 13;
     x ^= x >> 17;
     x ^= x << 5;
@@ -121,14 +174,7 @@ static gc_u32 rnd(gcs_core *c)
     return x;
 }
 
-static void sanitize_name(char *s)
-{
-    for (; *s; s++) {
-        if ((unsigned char)*s < 0x20 || *s == 0x7F) {
-            *s = '?';
-        }
-    }
-}
+#define sanitize_name sanitize_text
 
 static int id_is_zero(const gc_u8 *id)
 {
@@ -149,7 +195,7 @@ static const char *pname(const gcs_peer *p)
 void gcs_default_config(gcs_config *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
-    strcpy(cfg->server_name, "GameComms");
+    copy_name(cfg->server_name, "GameComms");
     cfg->max_peers = 512;
     cfg->max_sessions = 256;
     cfg->link_grace_ms = 20000;
@@ -157,6 +203,8 @@ void gcs_default_config(gcs_config *cfg)
     cfg->pending_ms = 60000;
     cfg->max_outq = 256;
     cfg->log_level = 2;
+    cfg->hello_timeout_ms = 10000;
+    cfg->max_auth_failures = 3;
 }
 
 /* ------------------------------------------------------------------ */
@@ -179,14 +227,16 @@ static void peer_flush(gcs_peer *p)
     }
 }
 
-static void peer_kill(gcs_peer *p, int reason);
-
 static void peer_send_raw(gcs_peer *p, const gc_u8 *data, size_t len)
 {
     gcs_core *core = p->core;
     gcs_qmsg *m;
 
-    if (p->dead) {
+    if (p->dead || p->doomed) {
+        return;
+    }
+    if (len > GC_LINK_MAX_MSG) {
+        core->st.msgs_dropped++;
         return;
     }
     if (!p->q_head && gc_link_free_slots(&p->link) > 0 &&
@@ -194,9 +244,12 @@ static void peer_send_raw(gcs_peer *p, const gc_u8 *data, size_t len)
         return;
     }
     if (p->q_count >= core->cfg.max_outq) {
+        /* Never destroy a peer from inside a send: callers are in the
+         * middle of walking session and member state.  The peer is
+         * killed at the next safe point (process_doomed). */
         LOG_W("peer %u '%s': outbound queue overflow, dropping peer", p->peer_id, pname(p));
         core->st.msgs_dropped++;
-        peer_kill(p, GC_LEFT_LOST);
+        p->doomed = 1;
         return;
     }
     m = (gcs_qmsg *)malloc(sizeof(gcs_qmsg) + len);
@@ -234,7 +287,7 @@ static void send_error(gcs_peer *p, gc_i8 code, gc_u8 ref, const char *text)
     m.type = GC_MT_ERROR;
     m.u.error.code = code;
     m.u.error.ref_type = ref;
-    strncpy(m.u.error.text, text, GC_MAX_NAME);
+    copy_name(m.u.error.text, text);
     peer_send(p, &m);
 }
 
@@ -274,7 +327,7 @@ static void send_peer_joined(gcs_peer *host, gc_u8 type, gc_u8 slot, const gcs_m
     m.u.peer.slot = slot;
     m.u.peer.rejoin = (gc_u8)rejoin;
     memcpy(m.u.peer.device_id, mb->device_id, GC_DEVICE_ID_LEN);
-    strcpy(m.u.peer.name, mb->name);
+    copy_name(m.u.peer.name, mb->name);
     peer_send(host, &m);
 }
 
@@ -290,7 +343,7 @@ static void send_join_result(gcs_peer *p, gc_i8 result, const gcs_session *s, gc
         m.u.join_result.session_id = s->id;
         m.u.join_result.max_players = s->max_players;
         if (s->m[0].peer) {
-            strcpy(m.u.join_result.host_name, s->m[0].name);
+            copy_name(m.u.join_result.host_name, s->m[0].name);
         }
     }
     peer_send(p, &m);
@@ -337,24 +390,33 @@ static void session_end(gcs_core *core, gcs_session *s, gc_u8 reason)
 {
     int i;
 
+    if (s->dead) {
+        return;
+    }
     LOG_I("session %08x (uid %08x) ended, reason %u", s->id, s->game_uid, reason);
+    s->dead = 1; /* first: nothing below may find or re-enter it */
     for (i = 1; i < GC_MAX_PLAYERS; i++) {
         gcs_member *mb = &s->m[i];
-        if (mb->peer && mb->peer->session == s) {
-            if (mb->state == M_PENDING) {
-                send_join_result(mb->peer, GC_R_CLOSED, s, (gc_u8)i);
-            } else {
-                send_reason(mb->peer, GC_MT_SESSION_ENDED, reason);
-            }
-            mb->peer->session = NULL;
-        }
+        gcs_peer *mp = mb->peer;
+        int st = mb->state;
+
+        /* update all state before notifying anybody */
         member_clear(mb);
+        if (mp && mp->session == s) {
+            mp->session = NULL;
+            mp->slot = GC_SLOT_NONE;
+            if (st == M_PENDING) {
+                send_join_result(mp, GC_R_CLOSED, s, (gc_u8)i);
+            } else {
+                send_reason(mp, GC_MT_SESSION_ENDED, reason);
+            }
+        }
     }
     if (s->m[0].peer && s->m[0].peer->session == s) {
         s->m[0].peer->session = NULL;
+        s->m[0].peer->slot = GC_SLOT_NONE;
     }
     member_clear(&s->m[0]);
-    s->dead = 1;
 }
 
 /* remove peer p from its session (if any) */
@@ -362,6 +424,7 @@ static void session_leave(gcs_core *core, gcs_peer *p, gc_u8 reason, int reserve
 {
     gcs_session *s = p->session;
     gcs_member *mb;
+    gc_u8 slot;
 
     if (!s) {
         return;
@@ -370,15 +433,22 @@ static void session_leave(gcs_core *core, gcs_peer *p, gc_u8 reason, int reserve
         session_end(core, s, reason == GC_LEFT_LEAVE ? GC_LEFT_HOST_CLOSED : GC_LEFT_HOST_LOST);
         return;
     }
-    mb = &s->m[p->slot];
     p->session = NULL;
-    if (mb->peer != p) {
+    if (p->slot >= GC_MAX_PLAYERS) {
+        p->slot = GC_SLOT_NONE;
         return;
     }
+    mb = &s->m[p->slot];
+    if (mb->peer != p) {
+        p->slot = GC_SLOT_NONE;
+        return;
+    }
+    slot = p->slot;
+    p->slot = GC_SLOT_NONE;
     if (mb->state == M_PENDING) {
         member_clear(mb);
         /* the host never accepted this one; withdraw the request */
-        send_peer_left(session_host(s), p->slot, GC_LEFT_LEAVE);
+        send_peer_left(session_host(s), slot, GC_LEFT_LEAVE);
         return;
     }
     if (reserve && s->state != GC_SS_LOBBY) {
@@ -386,11 +456,11 @@ static void session_leave(gcs_core *core, gcs_peer *p, gc_u8 reason, int reserve
         mb->peer = NULL;
         mb->reserved_owner = p;
         mb->t = core->now;
-        LOG_I("session %08x: slot %u ('%s') reserved for rejoin", s->id, p->slot, mb->name);
+        LOG_I("session %08x: slot %u ('%s') reserved for rejoin", s->id, slot, mb->name);
     } else {
         member_clear(mb);
     }
-    send_peer_left(session_host(s), p->slot, reason);
+    send_peer_left(session_host(s), slot, reason);
 }
 
 /* ------------------------------------------------------------------ */
@@ -435,6 +505,7 @@ static gcs_peer *peer_new(gcs_core *core, gcs_conn *conn)
     p->core = core;
     p->conn = conn;
     p->slot = GC_SLOT_NONE;
+    p->t_created = core->now;
     gc_link_default_cfg(&cfg, GC_ROLE_SERVER, 0);
     cfg.ka_ms = 5000;
     cfg.dead_ms = 20000;
@@ -472,6 +543,7 @@ static void peer_kill(gcs_peer *p, int reason)
         LOG_I("peer %u '%s' gone (reason %d)", p->peer_id, pname(p), reason);
     }
     p->dead = 1;
+    p->doomed = 0;
     session_leave(core, p, (gc_u8)reason, reason != GC_LEFT_LEAVE);
     {
         int i, k;
@@ -491,6 +563,54 @@ static void peer_kill(gcs_peer *p, int reason)
             core->io.close(core->io_ctx, c);
         }
     }
+}
+
+/* Kill every peer that was doomed while it was unsafe to do so.  Killing
+ * notifies other peers, which may doom them in turn: repeat until stable
+ * (bounded, every pass kills at least one peer). */
+static void process_doomed(gcs_core *core)
+{
+    int i, again = 1;
+
+    while (again) {
+        again = 0;
+        for (i = 0; i < core->n_peers; i++) {
+            gcs_peer *p = core->peers[i];
+            if (p->doomed && !p->dead) {
+                peer_kill(p, GC_LEFT_LOST);
+                again = 1;
+            }
+        }
+    }
+}
+
+/* Last line of defence before memory is released: no session may keep a
+ * pointer to a peer that is about to be freed, whatever path killed it. */
+static void peer_scrub_refs(gcs_core *core, gcs_peer *p)
+{
+    int i, k;
+
+    for (i = 0; i < core->n_sessions; i++) {
+        gcs_session *s = core->sessions[i];
+        for (k = 0; k < GC_MAX_PLAYERS; k++) {
+            if (s->m[k].reserved_owner == p) {
+                s->m[k].reserved_owner = NULL;
+            }
+            if (s->m[k].peer == p) {
+                LOG_E("internal: freeing peer %u still in session %08x slot %d", p->peer_id, s->id, k);
+                if (k == GC_SLOT_HOST) {
+                    s->m[k].peer = NULL;
+                    s->m[k].state = M_EMPTY;
+                    if (!s->dead) {
+                        session_end(core, s, GC_LEFT_HOST_LOST);
+                    }
+                } else {
+                    member_clear(&s->m[k]);
+                }
+            }
+        }
+    }
+    p->session = NULL;
 }
 
 static void peer_detach(gcs_peer *p)
@@ -533,29 +653,68 @@ static void peer_on_state(void *ctx, int ev, int reason)
     }
 }
 
+static int same_source(const gcs_conn *a, const gcs_conn *b)
+{
+    return strncmp(a->addr, b->addr, sizeof(a->addr)) == 0;
+}
+
 static void peer_on_hello(void *ctx, const gc_hello *h)
 {
     gcs_peer *p = (gcs_peer *)ctx;
     gcs_core *core = p->core;
     int i;
 
+    /* Frames that follow a CLOSE/REJECT/kill in the same read must not
+     * act on a peer that no longer owns a connection. */
+    if (p->dead || p->doomed || !p->conn) {
+        return;
+    }
+    /* A bridge sends exactly one HELLO per transport connection (plus
+     * retransmissions of the same one, which the link layer answers
+     * itself).  A second, different HELLO on an established connection
+     * is a protocol violation and was the entry point for identity
+     * switching and use-after-free attacks. */
+    if (p->hello_seen) {
+        LOG_W("peer %u '%s': unexpected second HELLO on one connection, dropping", p->peer_id, pname(p));
+        peer_kill(p, GC_LEFT_LOST);
+        return;
+    }
+    p->hello_seen = 1;
+
     if (h->link_id != 0) {
         for (i = 0; i < core->n_peers; i++) {
             gcs_peer *o = core->peers[i];
-            if (o == p || o->dead || !o->link.has_session || o->link.link_id != h->link_id) {
+            gcs_conn *c;
+            if (o == p || o->dead || o->doomed || !o->link.has_session || o->link.link_id != h->link_id) {
                 continue;
             }
-            /* resumption: move this connection over to the old peer */
+            /* The link id is the only resumption credential.  A link whose
+             * connection is still alive may only be taken over from the
+             * same source address (half-open TCP after a reconnect);
+             * anything else waits until the old connection has been
+             * declared dead and the link is detached. */
+            if (o->conn && !same_source(o->conn, p->conn)) {
+                LOG_W("refusing resume of attached link %08x from a different address", h->link_id);
+                peer_kill(p, GC_LEFT_LOST);
+                return;
+            }
             if (o->conn) {
                 peer_detach(o); /* stale half-open connection */
             }
-            o->conn = p->conn;
-            o->conn->peer = o;
+            /* resumption: move this connection over to the old peer and
+             * retire the placeholder through the regular kill path */
+            c = p->conn;
             p->conn = NULL;
-            p->dead = 1;
+            c->peer = NULL;
+            peer_kill(p, GC_LEFT_LOST);
+            o->conn = c;
+            c->peer = o;
+            o->hello_seen = 1;
             gc_link_listen(&o->link, core->now);
             gc_link_accept(&o->link, h, 1, core->now);
-            peer_flush(o);
+            if (!o->dead) {
+                peer_flush(o);
+            }
             return;
         }
     }
@@ -591,12 +750,17 @@ static void h_register(gcs_peer *p, const gc_msg *m)
     memset(&r, 0, sizeof(r));
     r.type = GC_MT_REGISTERED;
     r.u.registered.proto = GC_PROTO_VERSION_MAX;
-    strcpy(r.u.registered.server_name, core->cfg.server_name);
+    copy_name(r.u.registered.server_name, core->cfg.server_name);
 
-    if (core->cfg.access_key[0] && strcmp(core->cfg.access_key, m->u.reg.key) != 0) {
+    if (core->cfg.access_key[0] && !secret_equal(core->cfg.access_key, m->u.reg.key, sizeof(core->cfg.access_key))) {
         LOG_W("registration of '%s' rejected: bad access key", m->u.reg.name);
         r.u.registered.result = GC_R_REJECTED;
         peer_send(p, &r);
+        /* online guessing: only a few attempts per connection */
+        if (++p->auth_failures >= core->cfg.max_auth_failures) {
+            LOG_W("peer %u: too many bad access keys, closing connection", p->peer_id);
+            p->doomed = 1;
+        }
         return;
     }
     if (m->u.reg.api != GC_API_V1 && m->u.reg.api != GC_API_V2) {
@@ -621,7 +785,7 @@ static void h_register(gcs_peer *p, const gc_msg *m)
     p->api = m->u.reg.api;
     p->variant = m->u.reg.variant;
     memcpy(p->device_id, m->u.reg.device_id, GC_DEVICE_ID_LEN);
-    strcpy(p->name, m->u.reg.name[0] ? m->u.reg.name : "N-Gage");
+    copy_name(p->name, m->u.reg.name[0] ? m->u.reg.name : "N-Gage");
     sanitize_name(p->name);
     LOG_I("peer %u registered: '%s' api %u variant %u id %02x%02x%02x%02x%02x%02x", p->peer_id, p->name, p->api,
           p->variant, p->device_id[0], p->device_id[1], p->device_id[2], p->device_id[3], p->device_id[4],
@@ -672,12 +836,12 @@ static void h_host_open(gcs_peer *p, const gc_msg *m)
     s->state = GC_SS_LOBBY;
     s->created = core->now;
     s->seq = ++core->next_seq;
-    strcpy(s->name, m->u.host_open.name[0] ? m->u.host_open.name : p->name);
+    copy_name(s->name, m->u.host_open.name[0] ? m->u.host_open.name : p->name);
     sanitize_name(s->name);
     s->m[0].state = M_ACTIVE;
     s->m[0].peer = p;
     memcpy(s->m[0].device_id, p->device_id, GC_DEVICE_ID_LEN);
-    strcpy(s->m[0].name, p->name);
+    copy_name(s->m[0].name, p->name);
     p->session = s;
     p->slot = GC_SLOT_HOST;
     LOG_I("session %08x opened by '%s': uid %08x api %u max %u flags %02x", s->id, p->name, s->game_uid, s->api,
@@ -716,7 +880,7 @@ static void h_discover(gcs_peer *p, const gc_msg *m)
         e->players = (gc_u8)session_count(s, 1);
         e->max_players = s->max_players;
         e->state = s->state;
-        strcpy(e->host_name, s->name);
+        copy_name(e->host_name, s->name);
         /* an API family mismatch is reported as a full session so that
          * different GameComms generations never look joinable */
         if (m->u.discover.api && s->api != m->u.discover.api) {
@@ -808,7 +972,7 @@ static void h_join(gcs_peer *p, const gc_msg *m)
             mb->state = M_ACTIVE;
             mb->peer = p;
             mb->reserved_owner = NULL;
-            strcpy(mb->name, p->name);
+            copy_name(mb->name, p->name);
             p->session = s;
             p->slot = (gc_u8)i;
             LOG_I("session %08x: '%s' rejoined slot %d", s->id, p->name, i);
@@ -839,7 +1003,7 @@ static void h_join(gcs_peer *p, const gc_msg *m)
     s->m[slot].peer = p;
     s->m[slot].reserved_owner = NULL;
     memcpy(s->m[slot].device_id, p->device_id, GC_DEVICE_ID_LEN);
-    strcpy(s->m[slot].name, p->name);
+    copy_name(s->m[slot].name, p->name);
     s->m[slot].t = core->now;
     p->session = s;
     p->slot = (gc_u8)slot;
@@ -874,16 +1038,17 @@ static void h_peer_accept(gcs_peer *p, const gc_msg *m)
     }
     mb = &s->m[slot];
     c = mb->peer;
-    if (m->u.peer_accept.accept) {
+    if (m->u.peer_accept.accept && c && c->session == s) {
         mb->state = M_ACTIVE;
         send_join_result(c, GC_R_OK, s, slot);
         send_peer_joined(p, GC_MT_PEER_JOINED, slot, mb, 0);
     } else {
-        if (c) {
+        member_clear(mb);
+        if (c && c->session == s) {
             c->session = NULL;
+            c->slot = GC_SLOT_NONE;
             send_join_result(c, GC_R_REJECTED, s, GC_SLOT_NONE);
         }
-        member_clear(mb);
     }
 }
 
@@ -892,6 +1057,7 @@ static void h_kick(gcs_peer *p, const gc_msg *m)
     gcs_core *core = p->core;
     gcs_session *s = p->session;
     gcs_member *mb;
+    gcs_peer *victim;
     gc_u8 slot = m->u.peer_left.slot;
     int temporary = m->u.peer_left.reason == GC_LEFT_LOST;
 
@@ -900,17 +1066,20 @@ static void h_kick(gcs_peer *p, const gc_msg *m)
         return;
     }
     mb = &s->m[slot];
-    if (mb->peer && mb->peer->session == s) {
-        send_reason(mb->peer, GC_MT_SESSION_ENDED, temporary ? GC_LEFT_LOST : GC_LEFT_KICKED);
-        mb->peer->session = NULL;
-    }
+    victim = mb->peer;
     LOG_I("session %08x: host removed slot %u (%s)", s->id, slot, temporary ? "temporary" : "permanent");
+    /* update all state before notifying: the send may fail the victim */
     if (temporary && mb->state != M_PENDING) {
         mb->state = M_RESERVED;
         mb->peer = NULL;
         mb->t = core->now;
     } else {
         member_clear(mb);
+    }
+    if (victim && victim->session == s) {
+        victim->session = NULL;
+        victim->slot = GC_SLOT_NONE;
+        send_reason(victim, GC_MT_SESSION_ENDED, temporary ? GC_LEFT_LOST : GC_LEFT_KICKED);
     }
 }
 
@@ -921,7 +1090,8 @@ static void h_data(gcs_peer *p, const gc_msg *m, const gc_u8 *raw, size_t len)
     gc_u8 buf[GC_LINK_MAX_MSG];
     int i;
 
-    if (!s || s->m[p->slot].state != M_ACTIVE || s->m[p->slot].peer != p) {
+    if (!s || p->slot >= GC_MAX_PLAYERS || s->m[p->slot].state != M_ACTIVE || s->m[p->slot].peer != p ||
+        len > sizeof(buf)) {
         core->st.msgs_dropped++;
         send_error(p, GC_R_NOT_MEMBER, GC_MT_DATA, "not in a session");
         return;
@@ -990,9 +1160,11 @@ static void peer_handle_msg(gcs_peer *p, const gc_u8 *data, size_t len)
         }
         break;
     case GC_MT_SESSION_STATE:
-        if (is_host(p)) {
+        if (is_host(p) && m.u.session_state.state <= GC_SS_PAUSED) {
             p->session->state = m.u.session_state.state;
             LOG_D("session %08x state %u", p->session->id, p->session->state);
+        } else if (is_host(p)) {
+            send_error(p, GC_R_BAD_REQUEST, GC_MT_SESSION_STATE, "bad state");
         }
         break;
     case GC_MT_PEER_ACCEPT:
@@ -1039,7 +1211,34 @@ gcs_core *gcs_core_create(const gcs_config *cfg, const gcs_io *io, void *io_ctx,
     c->io = *io;
     c->io_ctx = io_ctx;
     c->rng = seed ? seed : 0x9E3779B9u;
+    /* never trust the caller's buffers to be terminated */
+    c->cfg.server_name[GC_MAX_NAME] = '\0';
+    c->cfg.access_key[GC_MAX_NAME] = '\0';
+    sanitize_text(c->cfg.server_name);
+    if (c->cfg.max_peers < 0) {
+        c->cfg.max_peers = 0;
+    }
+    if (c->cfg.max_sessions < 0) {
+        c->cfg.max_sessions = 0;
+    }
+    if (c->cfg.max_outq < 1) {
+        c->cfg.max_outq = 1;
+    }
+    if (c->cfg.max_auth_failures < 1) {
+        c->cfg.max_auth_failures = 1;
+    }
+    if (c->cfg.hello_timeout_ms == 0) {
+        c->cfg.hello_timeout_ms = 10000;
+    }
     return c;
+}
+
+void gcs_core_set_random(gcs_core *core, gcs_random_fn fn, void *ctx)
+{
+    if (core) {
+        core->rand_fn = fn;
+        core->rand_ctx = ctx;
+    }
 }
 
 void gcs_core_destroy(gcs_core *core)
@@ -1063,11 +1262,22 @@ static void collect_garbage(gcs_core *core)
 {
     int i, j;
 
+    process_doomed(core);
+    /* scrub first, free afterwards: scrubbing may still notify peers */
+    for (i = 0; i < core->n_peers; i++) {
+        if (core->peers[i]->dead) {
+            peer_scrub_refs(core, core->peers[i]);
+        }
+    }
+    process_doomed(core);
     for (i = 0, j = 0; i < core->n_peers; i++) {
         gcs_peer *p = core->peers[i];
         if (p->dead) {
             if (p->conn) {
-                p->conn->peer = NULL;
+                if (p->conn->peer == p) {
+                    p->conn->peer = NULL;
+                }
+                p->conn = NULL;
             }
             peer_free(p);
         } else {
@@ -1076,10 +1286,18 @@ static void collect_garbage(gcs_core *core)
     }
     core->n_peers = j;
     for (i = 0, j = 0; i < core->n_sessions; i++) {
-        if (core->sessions[i]->dead) {
-            free(core->sessions[i]);
+        gcs_session *s = core->sessions[i];
+        if (s->dead) {
+            int k;
+            for (k = 0; k < core->n_peers; k++) {
+                if (core->peers[k]->session == s) {
+                    core->peers[k]->session = NULL; /* defensive, never expected */
+                    core->peers[k]->slot = GC_SLOT_NONE;
+                }
+            }
+            free(s);
         } else {
-            core->sessions[j++] = core->sessions[i];
+            core->sessions[j++] = s;
         }
     }
     core->n_sessions = j;
@@ -1101,6 +1319,7 @@ void gcs_core_conn_open(gcs_core *core, gcs_conn *conn, gc_u32 now)
         }
         return;
     }
+    conn->addr[sizeof(conn->addr) - 1] = '\0';
     conn->peer = peer_new(core, conn);
     if (!conn->peer) {
         LOG_W("cannot allocate peer state, refusing connection");
@@ -1119,11 +1338,15 @@ void gcs_core_conn_input(gcs_core *core, gcs_conn *conn, const gc_u8 *data, size
     if (!p || p->dead) {
         return;
     }
+    if (len && !data) {
+        return;
+    }
     gc_link_input(&p->link, data, len, now);
     /* the connection may have been moved to a resumed peer meanwhile */
     if (conn->peer && !conn->peer->dead) {
         peer_flush(conn->peer);
     }
+    process_doomed(core);
 }
 
 void gcs_core_conn_closed(gcs_core *core, gcs_conn *conn, gc_u32 now)
@@ -1136,12 +1359,15 @@ void gcs_core_conn_closed(gcs_core *core, gcs_conn *conn, gc_u32 now)
         return;
     }
     p->conn = NULL;
-    if (!p->registered || !p->link.has_session) {
-        p->dead = 1; /* never got anywhere: nothing to resume */
-        return;
+    if (!p->registered || !p->link.has_session || p->link.state == GC_LS_CLOSED) {
+        /* nothing to resume: release everything through the one path
+         * that cleans up memberships (never just flag it dead) */
+        peer_kill(p, GC_LEFT_LOST);
+    } else {
+        gc_link_transport_lost(&p->link, now);
+        p->t_detached = now;
     }
-    gc_link_transport_lost(&p->link, now);
-    p->t_detached = now;
+    process_doomed(core);
 }
 
 void gcs_core_poll(gcs_core *core, gc_u32 now)
@@ -1154,7 +1380,12 @@ void gcs_core_poll(gcs_core *core, gc_u32 now)
         if (p->dead) {
             continue;
         }
-        if (p->conn) {
+        if (p->conn && !p->hello_seen && (gc_u32)(now - p->t_created) >= core->cfg.hello_timeout_ms) {
+            LOG_D("connection without handshake timed out");
+            peer_kill(p, GC_LEFT_LOST);
+        } else if (p->conn && p->link.state == GC_LS_CLOSED) {
+            peer_kill(p, GC_LEFT_LOST); /* link rejected/closed, transport lingering */
+        } else if (p->conn) {
             gc_link_poll(&p->link, now);
             if (!p->dead) {
                 peer_flush(p);

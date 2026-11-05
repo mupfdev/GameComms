@@ -30,11 +30,32 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#ifdef _WIN32
+#include <bcrypt.h>
+#endif
 
 #define PCB_VERSION       "1.0.0"
 #define PCB_MAX_DEVICES   7
 #define PCB_OUT_MAX       (256 * 1024)
 #define PCB_FREE_AFTER_MS 3000 /* after the device grace time */
+
+/* The server link id is the only credential for resuming a session after a
+ * reconnect, so it must not be guessable: take it from the OS CSPRNG. */
+static int os_random(void *buf, size_t n)
+{
+#ifdef _WIN32
+    return BCRYPT_SUCCESS(BCryptGenRandom(NULL, (PUCHAR)buf, (ULONG)n, BCRYPT_USE_SYSTEM_PREFERRED_RNG)) ? 0 : -1;
+#else
+    FILE *f = fopen("/dev/urandom", "rb");
+    size_t got;
+    if (!f) {
+        return -1;
+    }
+    got = fread(buf, 1, n, f);
+    fclose(f);
+    return got == n ? 0 : -1;
+#endif
+}
 
 /* ------------------------------------------------------------------ */
 /* configuration                                                       */
@@ -444,10 +465,13 @@ static pcb_dev *dev_new(const gc_u8 addr[6], gc_u32 now)
     p->dev_fd = SOCK_INVALID;
     p->srv_fd = SOCK_INVALID;
     bridge_default_cfg(&bc);
-    bc.server_link_id = ((gc_u32)rand() << 16) ^ (gc_u32)rand() ^ now ^ (gc_u32)i;
-    if (bc.server_link_id == 0) {
-        bc.server_link_id = 1;
-    }
+    do {
+        if (os_random(&bc.server_link_id, sizeof(bc.server_link_id)) != 0) {
+            logmsg(0, "no operating system random source, refusing to create a link");
+            free(p);
+            return NULL;
+        }
+    } while (bc.server_link_id == 0);
     copy_str(bc.access_key, sizeof(bc.access_key), g_cfg.key);
     io.dev_write = d_dev_write;
     io.srv_write = d_srv_write;
@@ -940,7 +964,6 @@ int main(int argc, char **argv)
     if (g_cfg.max_devices > PCB_MAX_DEVICES) {
         g_cfg.max_devices = PCB_MAX_DEVICES;
     }
-    srand((unsigned)time(NULL) ^ (unsigned)now_ms());
 
     logmsg(2, "GameComms PC bridge %s, server %s%s%d, up to %d N-Gages", PCB_VERSION, g_cfg.server,
            is_auto() ? " (local network), port " : ":", g_cfg.port, g_cfg.max_devices);

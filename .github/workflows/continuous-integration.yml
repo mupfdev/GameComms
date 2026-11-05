@@ -57,6 +57,31 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  fuzz:
+    # short libFuzzer smoke run (ASan + UBSan) of the protocol decoders and
+    # the stateful server core; see server/fuzz/
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build fuzzers
+        run: sh server/fuzz/build.sh build/fuzz
+      - name: Fuzz protocol decoders (60 s)
+        run: |
+          mkdir -p corpus/protocol
+          build/fuzz/fuzz_protocol corpus/protocol -max_len=3000 -max_total_time=60
+      - name: Fuzz server core (120 s)
+        run: |
+          python3 server/fuzz/make_seeds.py corpus/core
+          build/fuzz/fuzz_core corpus/core -max_len=4096 -timeout=10 -max_total_time=120
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: fuzz-crashes
+          path: |
+            crash-*
+            timeout-*
+            oom-*
+
   firmware:
     runs-on: ubuntu-latest
     steps:

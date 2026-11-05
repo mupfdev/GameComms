@@ -13,6 +13,7 @@
 
 #ifdef _WIN32
 #define _WIN32_WINNT 0x0600
+#include <bcrypt.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 typedef SOCKET sock_t;
@@ -33,6 +34,9 @@ static int sock_err(void) { return WSAGetLastError(); }
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
+#ifdef MSG_NOSIGNAL
+#define SEND_FLAGS MSG_NOSIGNAL
+#endif
 typedef int sock_t;
 #define SOCK_INVALID   (-1)
 #define sock_close     close
@@ -40,7 +44,14 @@ typedef int sock_t;
 static int sock_err(void) { return errno; }
 #endif
 
+#ifndef SEND_FLAGS
+#define SEND_FLAGS 0
+#endif
+
 #include "gcs_core.h"
+#include <errno.h>
+#include <limits.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -52,7 +63,12 @@ static int sock_err(void) { return errno; }
 #define GCS_DISCOVERY_REQ "GCDISCOVER1"
 #define GCS_DISCOVERY_RSP "GCSERVER1"
 #define MAX_CONNS         1024
-#define OUTBUF_MAX        (512 * 1024)
+/* A link never has more than GC_LINK_QUEUE frames in flight; even a full
+ * window retransmitted several times fits easily. */
+#define OUTBUF_MAX      (256 * 1024)
+#define ACCEPT_PER_PASS 64 /* bounded work per poll pass (no starvation) */
+#define UDP_PER_PASS    64
+#define RATE_SLOTS      512
 
 typedef struct
 {
@@ -64,12 +80,27 @@ typedef struct
     size_t out_len;
     size_t out_cap;
     char addr[64];
+    int limited; /* counts against the per-address limits */
 } net_conn;
 
+/* per source address new-connection token bucket */
+typedef struct
+{
+    char addr[64];
+    gc_u32 t_last;
+    gc_u32 tokens_milli; /* tokens * 1000 */
+} rate_slot;
+
 static net_conn g_conns[MAX_CONNS];
+static rate_slot g_rate[RATE_SLOTS];
+static int g_max_conns_per_ip = 16;
+static int g_conn_burst = 10;
+static int g_conn_rate = 2;      /* new connections per second per address */
+static int g_limit_loopback = 0; /* tunnels terminate on loopback */
+static gc_u32 g_conn_counter;
 static gcs_core *g_core;
-static volatile int g_stop;
-static volatile int g_dump;
+static volatile sig_atomic_t g_stop;
+static volatile sig_atomic_t g_dump;
 static int g_log_level = 2;
 static FILE *g_logfile;
 
@@ -89,10 +120,18 @@ static void log_line(void *ctx, int level, const char *line)
     static const char *lv[] = { "ERR", "WRN", "INF", "DBG" };
     char ts[32];
     time_t t = time(NULL);
-    struct tm *tm = localtime(&t);
+    struct tm tmb;
+    struct tm *tm;
     (void)ctx;
 
-    strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", tm);
+#ifdef _WIN32
+    tm = localtime_s(&tmb, &t) == 0 ? &tmb : NULL;
+#else
+    tm = localtime_r(&t, &tmb);
+#endif
+    if (!tm || strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", tm) == 0) {
+        snprintf(ts, sizeof(ts), "%lld", (long long)t);
+    }
     fprintf(g_logfile ? g_logfile : stdout, "%s %s %s\n", ts, lv[level < 0 ? 0 : level > 3 ? 3
                                                                                            : level],
             line);
@@ -112,6 +151,95 @@ static void logmsg(int level, const char *fmt, ...)
     log_line(NULL, level, line);
 }
 
+/* ---- randomness ---- */
+
+/* Fill buf from the operating system CSPRNG; 0 on success. */
+static int os_random(void *buf, size_t n)
+{
+#ifdef _WIN32
+    return BCRYPT_SUCCESS(BCryptGenRandom(NULL, (PUCHAR)buf, (ULONG)n, BCRYPT_USE_SYSTEM_PREFERRED_RNG)) ? 0 : -1;
+#else
+    static FILE *f;
+    if (!f) {
+        f = fopen("/dev/urandom", "rb");
+        if (!f) {
+            return -1;
+        }
+        setvbuf(f, NULL, _IONBF, 0);
+    }
+    return fread(buf, 1, n, f) == n ? 0 : -1;
+#endif
+}
+
+static gc_u32 core_random(void *ctx)
+{
+    gc_u32 v;
+    (void)ctx;
+    if (os_random(&v, sizeof(v)) != 0) {
+        /* checked at startup; failing later is fatal rather than weak */
+        fprintf(stderr, "fatal: operating system random source failed\n");
+        abort();
+    }
+    return v;
+}
+
+/* ---- per source address limits ---- */
+
+static int is_loopback(const char *a)
+{
+    return strncmp(a, "127.", 4) == 0 || strcmp(a, "::1") == 0 || strncmp(a, "::ffff:127.", 11) == 0;
+}
+
+static int conns_from(const char *addr)
+{
+    int i, n = 0;
+    for (i = 0; i < MAX_CONNS; i++) {
+        if (g_conns[i].used && g_conns[i].limited && strcmp(g_conns[i].addr, addr) == 0) {
+            n++;
+        }
+    }
+    return n;
+}
+
+/* token bucket: 'burst' connections, refilled at 'per_sec' per second */
+static int rate_allow(const char *addr, gc_u32 now, int burst, int per_sec)
+{
+    rate_slot *r = NULL, *oldest = &g_rate[0];
+    int i;
+    gc_u32 dt, tokens;
+
+    for (i = 0; i < RATE_SLOTS; i++) {
+        if (g_rate[i].addr[0] && strcmp(g_rate[i].addr, addr) == 0) {
+            r = &g_rate[i];
+            break;
+        }
+        if (!g_rate[i].addr[0] || GC_TIME_BEFORE(g_rate[i].t_last, oldest->t_last)) {
+            oldest = &g_rate[i];
+        }
+    }
+    if (!r) {
+        r = oldest;
+        snprintf(r->addr, sizeof(r->addr), "%s", addr);
+        r->tokens_milli = (gc_u32)burst * 1000u;
+        r->t_last = now;
+    }
+    dt = (gc_u32)(now - r->t_last);
+    r->t_last = now;
+    if (dt > 3600000u) {
+        dt = 3600000u;
+    }
+    tokens = r->tokens_milli + dt * (gc_u32)per_sec;
+    if (tokens > (gc_u32)burst * 1000u) {
+        tokens = (gc_u32)burst * 1000u;
+    }
+    if (tokens < 1000u) {
+        r->tokens_milli = tokens;
+        return 0;
+    }
+    r->tokens_milli = tokens - 1000u;
+    return 1;
+}
+
 static int set_nonblocking(sock_t s)
 {
 #ifdef _WIN32
@@ -128,7 +256,8 @@ static int set_nonblocking(sock_t s)
 static void try_flush(net_conn *c)
 {
     while (c->out_len > 0) {
-        int n = (int)send(c->fd, (const char *)c->out, (int)c->out_len, 0);
+        size_t chunk = c->out_len > (size_t)INT_MAX ? (size_t)INT_MAX : c->out_len;
+        int n = (int)send(c->fd, (const char *)c->out, (int)chunk, SEND_FLAGS);
         if (n > 0) {
             memmove(c->out, c->out + n, c->out_len - (size_t)n);
             c->out_len -= (size_t)n;
@@ -237,15 +366,36 @@ static sock_t open_listener(const char *bind_addr, int port, int type)
 
 static void accept_new(sock_t lfd, gc_u32 now)
 {
-    for (;;) {
+    int budget;
+
+    for (budget = 0; budget < ACCEPT_PER_PASS; budget++) {
         struct sockaddr_storage sa;
         socklen_t sl = sizeof(sa);
         sock_t fd = accept(lfd, (struct sockaddr *)&sa, &sl);
         int i, one = 1;
         net_conn *c = NULL;
+        char addr[64];
 
         if (fd == SOCK_INVALID) {
             return;
+        }
+        if (sl > (socklen_t)sizeof(sa) ||
+            getnameinfo((struct sockaddr *)&sa, sl, addr, sizeof(addr), NULL, 0, NI_NUMERICHOST) != 0) {
+            /* unknown source: unique placeholder that never matches another */
+            snprintf(addr, sizeof(addr), "?unknown-%u", (unsigned)++g_conn_counter);
+        }
+        addr[sizeof(addr) - 1] = '\0';
+        if (g_limit_loopback || !is_loopback(addr)) {
+            if (conns_from(addr) >= g_max_conns_per_ip) {
+                logmsg(1, "%s: too many connections from this address, refusing", addr);
+                sock_close(fd);
+                continue;
+            }
+            if (!rate_allow(addr, now, g_conn_burst, g_conn_rate)) {
+                logmsg(3, "%s: connection rate limit, refusing", addr);
+                sock_close(fd);
+                continue;
+            }
         }
         if (set_nonblocking(fd) != 0) {
             logmsg(1, "cannot set accepted socket nonblocking");
@@ -269,28 +419,52 @@ static void accept_new(sock_t lfd, gc_u32 now)
         c->used = 1;
         c->fd = fd;
         c->conn.net = c;
-        getnameinfo((struct sockaddr *)&sa, sl, c->addr, sizeof(c->addr) - 8, NULL, 0, NI_NUMERICHOST);
+        c->limited = g_limit_loopback || !is_loopback(addr);
+        snprintf(c->addr, sizeof(c->addr), "%s", addr);
+        snprintf(c->conn.addr, sizeof(c->conn.addr), "%s", addr);
         logmsg(3, "%s: connected", c->addr);
         gcs_core_conn_open(g_core, &c->conn, now);
     }
 }
 
-static void udp_discovery(sock_t ufd, int tcp_port, const char *name)
+static void udp_discovery(sock_t ufd, int tcp_port, const char *name, gc_u32 now)
 {
-    char buf[64];
-    struct sockaddr_storage sa;
-    socklen_t sl = sizeof(sa);
-    int n;
+    /* global response budget: the reply is larger than the request, so an
+     * unlimited responder is a (small) reflection amplifier */
+    static gc_u32 t_last;
+    static int budget = 20;
+    int k;
 
-    while ((n = (int)recvfrom(ufd, buf, sizeof(buf) - 1, 0, (struct sockaddr *)&sa, &sl)) > 0) {
+    if ((gc_u32)(now - t_last) >= 1000u) {
+        t_last = now;
+        budget = 20;
+    }
+    for (k = 0; k < UDP_PER_PASS; k++) {
+        char buf[64];
         char rsp[96];
+        struct sockaddr_storage sa;
+        socklen_t sl = sizeof(sa);
+        int n = (int)recvfrom(ufd, buf, sizeof(buf) - 1, 0, (struct sockaddr *)&sa, &sl);
+
+        if (n <= 0) {
+            return;
+        }
         buf[n] = '\0';
-        if (strncmp(buf, GCS_DISCOVERY_REQ, strlen(GCS_DISCOVERY_REQ)) != 0) {
+        if ((size_t)n < strlen(GCS_DISCOVERY_REQ) || strncmp(buf, GCS_DISCOVERY_REQ, strlen(GCS_DISCOVERY_REQ)) != 0) {
             continue;
         }
+        if (sl > (socklen_t)sizeof(sa) || budget <= 0) {
+            continue;
+        }
+        budget--;
         n = snprintf(rsp, sizeof(rsp), "%s %d %s", GCS_DISCOVERY_RSP, tcp_port, name);
+        if (n < 0) {
+            continue;
+        }
+        if (n >= (int)sizeof(rsp)) {
+            n = (int)sizeof(rsp) - 1;
+        }
         sendto(ufd, rsp, n, 0, (struct sockaddr *)&sa, sl);
-        sl = sizeof(sa);
     }
 }
 
@@ -302,6 +476,13 @@ static void on_signal(int sig)
     } else {
         g_stop = 1;
     }
+}
+#else
+static BOOL WINAPI on_console(DWORD ev)
+{
+    (void)ev;
+    g_stop = 1;
+    return TRUE;
 }
 #endif
 
@@ -330,42 +511,79 @@ static void trim(char *s)
     }
 }
 
-static int set_option(app_cfg *a, const char *key, const char *val)
+/* strict decimal parse with range check; 1 on success */
+static int parse_long(const char *val, long lo, long hi, long *out)
 {
-    if (!strcmp(key, "bind")) {
-        snprintf(a->bind_addr, sizeof(a->bind_addr), "%s", val);
-    } else if (!strcmp(key, "allow_plaintext_network")) {
-        a->allow_plaintext_network = atoi(val) != 0;
-    } else if (!strcmp(key, "port")) {
-        a->port = atoi(val);
-    } else if (!strcmp(key, "discovery")) {
-        a->discovery = atoi(val);
-    } else if (!strcmp(key, "name")) {
-        snprintf(a->core.server_name, sizeof(a->core.server_name), "%s", val);
-    } else if (!strcmp(key, "access_key")) {
-        snprintf(a->core.access_key, sizeof(a->core.access_key), "%s", val);
-    } else if (!strcmp(key, "max_peers")) {
-        a->core.max_peers = atoi(val);
-    } else if (!strcmp(key, "max_sessions")) {
-        a->core.max_sessions = atoi(val);
-    } else if (!strcmp(key, "link_grace_ms")) {
-        a->core.link_grace_ms = (gc_u32)atol(val);
-    } else if (!strcmp(key, "reserve_ms")) {
-        a->core.reserve_ms = (gc_u32)atol(val);
-    } else if (!strcmp(key, "pending_ms")) {
-        a->core.pending_ms = (gc_u32)atol(val);
-    } else if (!strcmp(key, "max_outq")) {
-        a->core.max_outq = atoi(val);
-    } else if (!strcmp(key, "log_level")) {
-        a->core.log_level = atoi(val);
-    } else if (!strcmp(key, "log_file")) {
-        snprintf(a->logfile, sizeof(a->logfile), "%s", val);
-    } else if (!strcmp(key, "status_interval")) {
-        a->status_interval = atoi(val);
-    } else {
+    char *end;
+    long v;
+
+    if (!val || !*val) {
         return 0;
     }
+    errno = 0;
+    v = strtol(val, &end, 10);
+    if (errno != 0 || *end != '\0' || v < lo || v > hi) {
+        return 0;
+    }
+    *out = v;
     return 1;
+}
+
+/* bounded string option: values that do not fit are an error, never
+ * silently truncated (a truncated key would still "work" but be weaker) */
+static int set_str(char *dst, size_t cap, const char *val)
+{
+    size_t n = strlen(val);
+    if (n >= cap) {
+        return 0;
+    }
+    memcpy(dst, val, n + 1);
+    return 1;
+}
+
+/* returns 1 ok, 0 unknown key, -1 invalid value */
+static int set_option(app_cfg *a, const char *key, const char *val)
+{
+    long v;
+#define NUM(name, lo, hi, dst)                  \
+    if (!strcmp(key, name)) {                   \
+        if (!parse_long(val, (lo), (hi), &v)) { \
+            return -1;                          \
+        }                                       \
+        dst = v;                                \
+        return 1;                               \
+    }
+    if (!strcmp(key, "bind")) {
+        return set_str(a->bind_addr, sizeof(a->bind_addr), val) ? 1 : -1;
+    }
+    if (!strcmp(key, "name")) {
+        return set_str(a->core.server_name, sizeof(a->core.server_name), val) ? 1 : -1;
+    }
+    if (!strcmp(key, "access_key")) {
+        return set_str(a->core.access_key, sizeof(a->core.access_key), val) ? 1 : -1;
+    }
+    if (!strcmp(key, "log_file")) {
+        return set_str(a->logfile, sizeof(a->logfile), val) ? 1 : -1;
+    }
+    NUM("allow_plaintext_network", 0, 1, a->allow_plaintext_network)
+    NUM("port", 1, 65535, a->port)
+    NUM("discovery", 0, 1, a->discovery)
+    NUM("max_peers", 1, MAX_CONNS, a->core.max_peers)
+    NUM("max_sessions", 1, 65536, a->core.max_sessions)
+    NUM("link_grace_ms", 0, 86400000L, a->core.link_grace_ms)
+    NUM("reserve_ms", 0, 86400000L, a->core.reserve_ms)
+    NUM("pending_ms", 0, 86400000L, a->core.pending_ms)
+    NUM("max_outq", 1, 4096, a->core.max_outq)
+    NUM("log_level", 0, 3, a->core.log_level)
+    NUM("status_interval", 0, 86400, a->status_interval)
+    NUM("hello_timeout_ms", 1000, 600000L, a->core.hello_timeout_ms)
+    NUM("max_auth_failures", 1, 100, a->core.max_auth_failures)
+    NUM("max_conns_per_ip", 1, MAX_CONNS, g_max_conns_per_ip)
+    NUM("conn_burst", 1, 10000, g_conn_burst)
+    NUM("conn_rate", 1, 10000, g_conn_rate)
+    NUM("limit_loopback", 0, 1, g_limit_loopback)
+#undef NUM
+    return 0;
 }
 
 static int load_config(app_cfg *a, const char *path)
@@ -380,6 +598,11 @@ static int load_config(app_cfg *a, const char *path)
     while (fgets(line, sizeof(line), f)) {
         char *eq;
         ln++;
+        if (!strchr(line, '\n') && !feof(f)) {
+            fprintf(stderr, "%s:%d: line too long\n", path, ln);
+            fclose(f);
+            return 0;
+        }
         trim(line);
         if (!line[0] || line[0] == '#' || line[0] == ';' || line[0] == '[') {
             continue;
@@ -392,8 +615,16 @@ static int load_config(app_cfg *a, const char *path)
         *eq = '\0';
         trim(line);
         trim(eq + 1);
-        if (!set_option(a, line, eq + 1)) {
+        switch (set_option(a, line, eq + 1)) {
+        case 0:
             fprintf(stderr, "%s:%d: unknown option '%s'\n", path, ln, line);
+            break;
+        case -1:
+            fprintf(stderr, "%s:%d: invalid value for '%s'\n", path, ln, line);
+            fclose(f);
+            return 0;
+        default:
+            break;
         }
     }
     fclose(f);
@@ -416,7 +647,12 @@ static void usage(const char *argv0)
            "  --link_grace_ms=N    keep silent links for resumption (default 20000)\n"
            "  --reserve_ms=N       keep slots of lost players (default 180000)\n"
            "  --pending_ms=N       confirmation timeout (default 60000)\n"
-           "  --log_level=0..3 --log_file=PATH --status_interval=SECONDS\n",
+           "  --log_level=0..3 --log_file=PATH --status_interval=SECONDS\n"
+           "  --hello_timeout_ms=N drop connections without handshake (default 10000)\n"
+           "  --max_auth_failures=N bad access keys per connection (default 3)\n"
+           "  --max_conns_per_ip=N --conn_burst=N --conn_rate=N\n"
+           "                       per source address limits (default 16, 10, 2/s)\n"
+           "  --limit_loopback=0|1 apply them to loopback too (default 0: tunnels)\n",
            GCS_VERSION, argv0, GCS_DEFAULT_PORT);
 }
 
@@ -450,9 +686,17 @@ int main(int argc, char *argv[])
         } else if (!strncmp(argv[i], "--", 2) && strchr(argv[i], '=')) {
             char key[64];
             const char *eq = strchr(argv[i], '=');
-            snprintf(key, sizeof(key), "%.*s", (int)(eq - argv[i] - 2), argv[i] + 2);
-            if (!set_option(&a, key, eq + 1)) {
+            size_t kl = (size_t)(eq - argv[i] - 2);
+            int rc;
+            if (kl >= sizeof(key)) {
                 fprintf(stderr, "unknown option %s\n", argv[i]);
+                return 2;
+            }
+            memcpy(key, argv[i] + 2, kl);
+            key[kl] = '\0';
+            rc = set_option(&a, key, eq + 1);
+            if (rc <= 0) {
+                fprintf(stderr, "%s option %s\n", rc ? "invalid value for" : "unknown", argv[i]);
                 return 2;
             }
         } else {
@@ -477,6 +721,16 @@ int main(int argc, char *argv[])
     g_log_level = a.core.log_level;
     if (a.logfile[0]) {
         g_logfile = fopen(a.logfile, "a");
+        if (!g_logfile) {
+            fprintf(stderr, "cannot open log file %s, logging to stdout\n", a.logfile);
+        }
+    }
+    {
+        gc_u32 probe;
+        if (os_random(&probe, sizeof(probe)) != 0) {
+            fprintf(stderr, "no operating system random source available\n");
+            return 1;
+        }
     }
 
     for (i = 0; i < MAX_CONNS; i++) {
@@ -497,15 +751,25 @@ int main(int argc, char *argv[])
     io.write = io_write;
     io.close = io_close;
     io.log = log_line;
-    g_core = gcs_core_create(&a.core, &io, NULL, (gc_u32)time(NULL) ^ (gc_u32)now_ms());
+    g_core = gcs_core_create(&a.core, &io, NULL, core_random(NULL));
     if (!g_core) {
         return 1;
     }
+    gcs_core_set_random(g_core, core_random, NULL);
 #ifndef _WIN32
-    signal(SIGPIPE, SIG_IGN);
-    signal(SIGINT, on_signal);
-    signal(SIGTERM, on_signal);
-    signal(SIGUSR1, on_signal);
+    {
+        struct sigaction sa;
+        memset(&sa, 0, sizeof(sa));
+        sigemptyset(&sa.sa_mask);
+        sa.sa_handler = SIG_IGN;
+        sigaction(SIGPIPE, &sa, NULL);
+        sa.sa_handler = on_signal;
+        sigaction(SIGINT, &sa, NULL);
+        sigaction(SIGTERM, &sa, NULL);
+        sigaction(SIGUSR1, &sa, NULL);
+    }
+#else
+    SetConsoleCtrlHandler(on_console, TRUE);
 #endif
     logmsg(2, "GameComms server %s '%s' listening on %s:%d (protocol %d)%s", GCS_VERSION, a.core.server_name,
            a.bind_addr[0] ? a.bind_addr : "*", a.port, GC_PROTO_VERSION_MAX,
@@ -546,11 +810,11 @@ int main(int argc, char *argv[])
                     continue;
                 }
                 if (pfd[i].fd == ufd) {
-                    udp_discovery(ufd, a.port, a.core.server_name);
+                    udp_discovery(ufd, a.port, a.core.server_name, now);
                     continue;
                 }
-                if (!c || !c->used) {
-                    continue;
+                if (!c || !c->used || c->closing) {
+                    continue; /* closing: no more input, flushed on free */
                 }
                 if (pfd[i].revents & POLLNVAL) {
                     c->closing = 1;

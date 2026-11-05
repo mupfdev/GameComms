@@ -102,6 +102,7 @@ games with other players regardless of physical distance.
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) - wire protocol
 - [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) - variants, games, exports
 - [docs/REVERSE_ENGINEERING.md](docs/REVERSE_ENGINEERING.md) - analysis of the original DLLs
+- [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) - Security audit: gamecommsd
 
 ## Quick start
 

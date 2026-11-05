@@ -22,6 +22,7 @@ typedef struct client
     int n_msgs;
     char name[16];
     gc_u8 devid[6];
+    int deaf; /* drop everything the server sends (stalled receiver) */
 } client;
 
 static gcs_core *core;
@@ -70,10 +71,17 @@ static void copy_str(char *dst, size_t cap, const char *src)
     dst[n] = 0;
 }
 
+static int log_ctrl_chars; /* log lines must never carry control characters */
 static void io_log(void *ctx, int lvl, const char *line)
 {
+    const unsigned char *u = (const unsigned char *)line;
     (void)ctx;
     (void)lvl;
+    for (; *u; u++) {
+        if (*u < 0x20 || *u == 0x7F) {
+            log_ctrl_chars++;
+        }
+    }
     if (log_enabled()) {
         printf("    | %s\n", line);
     }
@@ -123,6 +131,9 @@ static void pump(int steps)
                 memcpy(t, c->to_srv, n);
                 c->n_to_srv = 0;
                 gcs_core_conn_input(core, &c->conn, t, n, now);
+            }
+            if (c->deaf) {
+                c->n_to_cli = 0;
             }
             if (c->n_to_cli && c->open) {
                 gc_u8 t[BUFCAP];
@@ -741,22 +752,479 @@ static void test_malformed_input(void)
     CHECK(gc_link_is_up(&C[0].link));
 }
 
-int main(void)
+/* ================================================================= */
+/* Security regression tests (each one reproduced a real defect)     */
+/* ================================================================= */
+
+/* raw link frame on a client's connection, bypassing its gc_link */
+static void inject_frame(client *c, gc_u8 type, const gc_u8 *payload, size_t plen)
 {
-    RUN(test_register_required);
-    RUN(test_matchmaking_and_slots);
-    RUN(test_incompatible_and_isolation);
-    RUN(test_routing);
-    RUN(test_ordering_under_load);
-    RUN(test_confirm_mode);
-    RUN(test_session_lock_and_rejoin);
-    RUN(test_link_resume_keeps_membership);
-    RUN(test_grace_expiry_and_host_loss);
-    RUN(test_reservation_expiry);
-    RUN(test_kick_and_host_close);
-    RUN(test_duplicate_device_registration);
-    RUN(test_connection_refused_when_peer_limit_reached);
-    RUN(test_malformed_input);
+    gc_u8 body[GC_FRAME_MAX_BODY];
+    gc_u8 wire[GC_FRAME_MAX_WIRE];
+    size_t n;
+    memset(body, 0, GC_LINK_HDR_LEN);
+    body[0] = type;
+    body[1] = 1;
+    if (plen) {
+        memcpy(body + GC_LINK_HDR_LEN, payload, plen);
+    }
+    n = gc_frame_encode(body, GC_LINK_HDR_LEN + plen, wire, sizeof(wire));
+    CHECK(n > 0);
+    memcpy(c->to_srv + c->n_to_srv, wire, n);
+    c->n_to_srv += n;
+}
+
+static void inject_hello(client *c, gc_u32 link_id, int valid)
+{
+    gc_u8 h[15];
+    h[0] = valid ? GC_LINK_MAGIC_0 : 0x00; /* bad magic -> malformed */
+    h[1] = GC_LINK_MAGIC_1;
+    h[2] = 1;
+    h[3] = 1;
+    h[4] = GC_ROLE_TEST;
+    h[5] = (gc_u8)(link_id >> 24);
+    h[6] = (gc_u8)(link_id >> 16);
+    h[7] = (gc_u8)(link_id >> 8);
+    h[8] = (gc_u8)link_id;
+    h[9] = h[10] = 0;
+    h[11] = (gc_u8)(GC_LINK_MAX_MSG >> 8);
+    h[12] = (gc_u8)(GC_LINK_MAX_MSG & 0xFF);
+    h[13] = GC_LINK_QUEUE;
+    h[14] = 0;
+    inject_frame(c, GC_FT_HELLO, h, 14);
+}
+
+static void world_with(int max_peers, int max_outq, const char *key)
+{
+    gcs_config cfg;
+    gcs_io io;
+    if (core) {
+        gcs_core_destroy(core);
+    }
+    gcs_default_config(&cfg);
+    cfg.reserve_ms = 30000;
+    cfg.link_grace_ms = 5000;
+    cfg.pending_ms = 4000;
+    if (max_peers) {
+        cfg.max_peers = max_peers;
+    }
+    if (max_outq) {
+        cfg.max_outq = max_outq;
+    }
+    if (key) {
+        copy_str(cfg.access_key, sizeof(cfg.access_key), key);
+    }
+    io.write = io_write;
+    io.close = io_close;
+    io.log = io_log;
+    core = gcs_core_create(&cfg, &io, NULL, 42);
+    memset(C, 0, sizeof(C));
+}
+
+/* Second HELLO on an established connection that names another peer's
+ * link id.  Originally the old peer was marked dead without leaving its
+ * session, was freed, and the session kept a dangling host pointer:
+ * heap-use-after-free on the next JOIN. */
+static void test_sec_rehello_uaf(void)
+{
+    gc_msg *r;
+    gc_u32 sid;
+    reset_world();
+    new_client(0, "host");
+    new_client(1, "victim");
+    new_client(2, "joiner");
+    do_register(0, GC_API_V2);
+    do_register(1, GC_API_V2);
+    do_register(2, GC_API_V2);
+    sid = host_open(0, 0x51, GC_API_V2, 4, 0);
+    inject_hello(&C[0], C[1].link_id, 1);
+    pump(5);
+    r = join(2, sid, 0x51, GC_API_V2, 0);
+    /* the offending host was dropped, so its session is gone */
+    CHECK(r != NULL && r->u.join_result.result == GC_R_NOT_FOUND);
+    CHECK(!C[0].open);
+    /* the victim's connection must not have been taken over */
+    CHECK_EQ(C[1].close_req, 0);
+    CHECK(C[1].open);
+}
+
+/* Malformed HELLO on an established, registered link followed by a
+ * transport close.  The link was closed silently, the peer then looked
+ * "never established" and was freed while still hosting: UAF. */
+static void test_sec_bad_hello_then_close_uaf(void)
+{
+    gc_msg *r;
+    gc_u32 sid;
+    reset_world();
+    new_client(0, "host");
+    new_client(2, "joiner");
+    do_register(0, GC_API_V2);
+    do_register(2, GC_API_V2);
+    sid = host_open(0, 0x52, GC_API_V2, 4, 0);
+    inject_hello(&C[0], 0xDEAD, 0);
+    pump(3);
+    disconnect_client(&C[0]);
+    pump(3);
+    r = join(2, sid, 0x52, GC_API_V2, 0);
+    CHECK(r != NULL && r->u.join_result.result == GC_R_NOT_FOUND);
+}
+
+/* CLOSE followed by a HELLO naming another peer, in one TCP segment.
+ * The HELLO was still processed by the already-killed peer whose
+ * connection pointer was NULL: NULL pointer write, server crash.
+ * Needs no registration and no access key. */
+static void test_sec_close_then_hello_crash(void)
+{
+    gc_msg m;
+    reset_world();
+    new_client(0, "attacker");
+    new_client(1, "bystander");
+    inject_frame(&C[0], GC_FT_CLOSE, (const gc_u8 *)"\x05", 1);
+    inject_hello(&C[0], C[1].link_id, 1);
+    pump(3);
+    CHECK_EQ(C[1].close_req, 0);
+    CHECK(C[1].open);
+    do_register(1, GC_API_V2);
+    memset(&m, 0, sizeof(m));
+    CHECK(find(&C[1], GC_MT_REGISTERED) != NULL);
+}
+
+/* fill the server's outbound path to a stalled client to exactly the limit */
+static void stall_client_queue(int host, int cli, int n)
+{
+    int i, sent = 0;
+    C[cli].deaf = 1;
+    while (sent < n) {
+        for (i = 0; i < 8 && sent < n; i++, sent++) {
+            send_data(host, (gc_u8)1, "fill");
+        }
+        pump(2);
+    }
+}
+
+/* Re-entrant peer destruction: a send that overflows the stalled
+ * client's queue killed it synchronously while session_end() still
+ * held the member pointer: NULL pointer dereference, server crash. */
+static void test_sec_reentrant_kill_session_end(void)
+{
+    gc_msg m;
+    world_with(0, 4, NULL);
+    new_client(0, "host");
+    new_client(1, "stalled");
+    do_register(0, GC_API_V2);
+    do_register(1, GC_API_V2);
+    host_open(0, 0x53, GC_API_V2, 4, 0);
+    join(1, 0, 0x53, GC_API_V2, 0);
+    stall_client_queue(0, 1, GC_LINK_QUEUE + 4);
+    memset(&m, 0, sizeof(m));
+    m.type = GC_MT_HOST_CLOSE;
+    send_msg(&C[0], &m);
+    pump(5);
+    CHECK(C[0].open);
+    CHECK_EQ(C[1].close_req + !C[1].open, 1); /* stalled one was dropped */
+}
+
+/* Same defect through KICK. */
+static void test_sec_reentrant_kill_kick(void)
+{
+    gc_msg m;
+    world_with(0, 4, NULL);
+    new_client(0, "host");
+    new_client(1, "stalled");
+    do_register(0, GC_API_V2);
+    do_register(1, GC_API_V2);
+    host_open(0, 0x54, GC_API_V2, 4, 0);
+    join(1, 0, 0x54, GC_API_V2, 0);
+    stall_client_queue(0, 1, GC_LINK_QUEUE + 4);
+    memset(&m, 0, sizeof(m));
+    m.type = GC_MT_KICK;
+    m.u.peer_left.slot = 1;
+    m.u.peer_left.reason = GC_LEFT_KICKED;
+    send_msg(&C[0], &m);
+    pump(5);
+    CHECK(C[0].open);
+}
+
+/* A fresh connection must not steal a peer whose connection is alive
+ * and that sits at another network address (session hijack). */
+static void test_sec_no_hijack_of_attached_peer(void)
+{
+    gc_u32 sid;
+    int i, got = 0;
+    reset_world();
+    new_client(0, "host");
+    new_client(1, "victim");
+    do_register(0, GC_API_V2);
+    do_register(1, GC_API_V2);
+    sid = host_open(0, 0x55, GC_API_V2, 4, 0);
+    join(1, sid, 0x55, GC_API_V2, 0);
+    /* attacker reuses the victim's link id from another address */
+    memset(&C[2], 0, sizeof(C[2]));
+    {
+        gc_link_cfg cfg;
+        gc_link_ops ops;
+        gc_link_default_cfg(&cfg, GC_ROLE_TEST, 1);
+        ops.write = cl_write;
+        ops.on_msg = cl_msg;
+        ops.on_state = cl_state;
+        ops.on_hello = NULL;
+        ops.can_accept = NULL;
+        gc_link_init(&C[2].link, &cfg, &ops, &C[2]);
+        C[2].link_id = C[1].link_id;
+        C[2].open = 1;
+        C[2].conn.net = &C[2];
+#ifdef GCS_CONN_HAS_ADDR
+        copy_str(C[2].conn.addr, sizeof(C[2].conn.addr), "203.0.113.66");
+#endif
+        gcs_core_conn_open(core, &C[2].conn, now);
+        gc_link_start(&C[2].link, C[2].link_id, now);
+        pump(5);
+    }
+    /* the victim keeps its connection and keeps receiving its traffic */
+    CHECK(C[1].open);
+    C[1].n_msgs = 0;
+    send_data(0, 1, "secret");
+    pump(5);
+    for (i = 0; i < C[1].n_msgs; i++) {
+        got += C[1].last[i].type == GC_MT_DATA;
+    }
+    CHECK_EQ(got, 1);
+    /* and nothing of the victim's session reaches the attacker's socket */
+    CHECK_EQ(C[2].link.st_rx_msgs + C[2].link.st_ooo + C[2].link.st_dup, 0);
+}
+
+/* Connections that never complete the handshake held peer slots
+ * forever; a handful of idle sockets locked everybody out. */
+static void test_sec_handshake_timeout(void)
+{
+    static gcs_conn idle[4];
+    int i;
+    world_with(4, 0, NULL);
+    for (i = 0; i < 4; i++) {
+        idle[i].net = &C[4 + i];
+        C[4 + i].open = 1;
+        gcs_core_conn_open(core, &idle[i], now);
+    }
+    pump(1500); /* 15 s of silence */
+    for (i = 0; i < 4; i++) {
+        if (C[4 + i].close_req) {
+            gcs_core_conn_closed(core, &idle[i], now);
+            C[4 + i].open = 0;
+        }
+    }
+    pump(2);
+    new_client(0, "legit");
+    CHECK(C[0].open);
+    do_register(0, GC_API_V2);
+    CHECK(find(&C[0], GC_MT_REGISTERED) != NULL);
+}
+
+/* Unlimited access key guesses on one connection. */
+static void test_sec_access_key_bruteforce(void)
+{
+    gc_msg m;
+    int i;
+    world_with(0, 0, "s3cret");
+    new_client(0, "guesser");
+    for (i = 0; i < 10 && C[0].open && !C[0].close_req; i++) {
+        memset(&m, 0, sizeof(m));
+        m.type = GC_MT_REGISTER;
+        m.u.reg.api = GC_API_V2;
+        m.u.reg.device_id[5] = 9;
+        copy_str(m.u.reg.name, sizeof(m.u.reg.name), "g");
+        m.u.reg.key[0] = (char)('a' + i);
+        send_msg(&C[0], &m);
+        pump(3);
+    }
+    CHECK(i <= 3);
+    CHECK(C[0].close_req || !C[0].open);
+}
+
+/* Attacker-controlled strings reached the log unfiltered (log forging,
+ * terminal escape injection). */
+static void test_sec_log_injection(void)
+{
+    gc_msg m;
+    log_ctrl_chars = 0;
+    world_with(0, 0, "k");
+    new_client(0, "inj");
+    memset(&m, 0, sizeof(m));
+    m.type = GC_MT_REGISTER;
+    m.u.reg.api = GC_API_V2;
+    m.u.reg.device_id[5] = 1;
+    copy_str(m.u.reg.name, sizeof(m.u.reg.name), "a\nERR forged\x1b[2J");
+    send_msg(&C[0], &m);
+    pump(3);
+    memset(&m, 0, sizeof(m));
+    m.type = GC_MT_ERROR;
+    copy_str(m.u.error.text, sizeof(m.u.error.text), "x\r\nINF fake\x07");
+    send_msg(&C[0], &m);
+    pump(3);
+    CHECK_EQ(log_ctrl_chars, 0);
+}
+
+/* xorshift32 output == state: one session id predicts every later one,
+ * which defeats hidden (unlisted) sessions that are joined by id. */
+static gc_u32 test_rand(void *ctx)
+{
+    (void)ctx;
+    return (gct_rand() << 8) ^ gct_rand();
+}
+static void test_sec_session_ids_unpredictable(void)
+{
+    gc_u32 a, b, x;
+    int predictable = 0, hi;
+    reset_world();
+#ifdef GCS_HAVE_SET_RANDOM
+    gcs_core_set_random(core, test_rand, NULL);
+#else
+    (void)test_rand;
+#endif
+    new_client(0, "h1");
+    new_client(1, "h2");
+    do_register(0, GC_API_V2);
+    do_register(1, GC_API_V2);
+    a = host_open(0, 0x56, GC_API_V2, 4, GC_HF_HIDDEN);
+    b = host_open(1, 0x56, GC_API_V2, 4, GC_HF_HIDDEN);
+    for (hi = 0; hi < 2; hi++) {
+        x = a | (hi ? 0x80000000u : 0);
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        predictable |= (x & 0x7FFFFFFF) == b;
+    }
+    CHECK(!predictable);
+}
+
+/* Functionality preserved: a bridge whose old TCP connection is still
+ * half-open reconnects from the same address and resumes its link. */
+static void test_sec_resume_same_address_while_attached(void)
+{
+    gc_u32 sid;
+    int i, got = 0;
+    reset_world();
+    new_client(0, "host");
+    new_client(6, "mover"); /* slot 6 = the old transport */
+    do_register(0, GC_API_V2);
+    do_register(6, GC_API_V2);
+    sid = host_open(0, 0x57, GC_API_V2, 4, 0);
+    join(6, sid, 0x57, GC_API_V2, 0);
+    /* the old TCP connection goes half-open: the server still has it */
+    C[6].open = 0;
+    /* the same bridge reconnects (same address) on a new connection */
+    memset(&C[1], 0, sizeof(C[1]));
+    C[1].link = C[6].link;
+    C[1].link.ctx = &C[1];
+    C[1].link.rx.ctx = &C[1].link;
+    C[1].link_id = C[6].link_id;
+    gc_link_transport_lost(&C[1].link, now);
+    C[1].open = 1;
+    C[1].conn.net = &C[1];
+    gcs_core_conn_open(core, &C[1].conn, now);
+    gc_link_start(&C[1].link, C[1].link_id, now);
+    pump(5);
+    CHECK(gc_link_is_up(&C[1].link));
+    CHECK(C[6].close_req); /* stale connection released */
+    C[1].n_msgs = 0;
+    send_data(0, 1, "still here");
+    pump(5);
+    for (i = 0; i < C[1].n_msgs; i++) {
+        got += C[1].last[i].type == GC_MT_DATA;
+    }
+    CHECK_EQ(got, 1);
+}
+
+/* Functionality preserved: a detached link resumes from a new address
+ * (e.g. the bridge moved to another Wi-Fi). */
+static void test_sec_resume_detached_from_new_address(void)
+{
+    gc_u32 sid;
+    int i, got = 0;
+    reset_world();
+    new_client(0, "host");
+    new_client(1, "roamer");
+    do_register(0, GC_API_V2);
+    do_register(1, GC_API_V2);
+    sid = host_open(0, 0x58, GC_API_V2, 4, 0);
+    join(1, sid, 0x58, GC_API_V2, 0);
+    disconnect_client(&C[1]);
+    pump(10);
+    C[1].open = 1;
+    C[1].n_to_srv = C[1].n_to_cli = 0;
+    memset(&C[1].conn, 0, sizeof(C[1].conn));
+    C[1].conn.net = &C[1];
+    copy_str(C[1].conn.addr, sizeof(C[1].conn.addr), "198.51.100.7");
+    gcs_core_conn_open(core, &C[1].conn, now);
+    gc_link_start(&C[1].link, C[1].link_id, now);
+    pump(5);
+    C[1].n_msgs = 0;
+    send_data(0, 1, "welcome back");
+    pump(5);
+    for (i = 0; i < C[1].n_msgs; i++) {
+        got += C[1].last[i].type == GC_MT_DATA;
+    }
+    CHECK_EQ(got, 1);
+}
+
+/* Invalid session state values are refused. */
+static void test_sec_session_state_validated(void)
+{
+    gc_msg m;
+    reset_world();
+    new_client(0, "host");
+    new_client(1, "j");
+    do_register(0, GC_API_V2);
+    do_register(1, GC_API_V2);
+    host_open(0, 0x59, GC_API_V2, 4, 0);
+    memset(&m, 0, sizeof(m));
+    m.type = GC_MT_SESSION_STATE;
+    m.u.session_state.state = 200;
+    send_msg(&C[0], &m);
+    pump(3);
+    CHECK(find(&C[0], GC_MT_ERROR) != NULL);
+    /* still a lobby: a join works */
+    CHECK(join(1, 0, 0x59, GC_API_V2, 0) && find(&C[1], GC_MT_JOIN_RESULT)->u.join_result.result == GC_R_OK);
+}
+
+static const char *only;
+#define RUNF(fn)                               \
+    do {                                       \
+        if (!only || strcmp(only, #fn) == 0) { \
+            RUN(fn);                           \
+        }                                      \
+    } while (0)
+
+int main(int argc, char **argv)
+{
+    only = argc > 1 ? argv[1] : NULL;
+    RUNF(test_register_required);
+    RUNF(test_matchmaking_and_slots);
+    RUNF(test_incompatible_and_isolation);
+    RUNF(test_routing);
+    RUNF(test_ordering_under_load);
+    RUNF(test_confirm_mode);
+    RUNF(test_session_lock_and_rejoin);
+    RUNF(test_link_resume_keeps_membership);
+    RUNF(test_grace_expiry_and_host_loss);
+    RUNF(test_reservation_expiry);
+    RUNF(test_kick_and_host_close);
+    RUNF(test_duplicate_device_registration);
+    RUNF(test_connection_refused_when_peer_limit_reached);
+    RUNF(test_malformed_input);
+    RUNF(test_sec_rehello_uaf);
+    RUNF(test_sec_bad_hello_then_close_uaf);
+    RUNF(test_sec_close_then_hello_crash);
+    RUNF(test_sec_reentrant_kill_session_end);
+    RUNF(test_sec_reentrant_kill_kick);
+    RUNF(test_sec_no_hijack_of_attached_peer);
+    RUNF(test_sec_handshake_timeout);
+    RUNF(test_sec_access_key_bruteforce);
+    RUNF(test_sec_log_injection);
+    RUNF(test_sec_session_ids_unpredictable);
+    RUNF(test_sec_resume_same_address_while_attached);
+    RUNF(test_sec_resume_detached_from_new_address);
+    RUNF(test_sec_session_state_validated);
     gcs_core_destroy(core);
+    core = NULL;
     TEST_MAIN_END();
 }

@@ -355,6 +355,25 @@ to a public interface or expose TCP port 9888 directly to untrusted networks.
 The protocol is still unencrypted TCP and the shared access key is sent in
 cleartext; the opt-in and key requirement reduce accidental exposure but are
 not substitutes for transport security.
+
+Built-in abuse limits (all can be set in `gamecommsd.conf` or on the
+command line):
+
+| Option | Default | Effect |
+|---|---|---|
+| `hello_timeout_ms` | 10000 | close connections that do not complete the link handshake |
+| `max_auth_failures` | 3 | close a connection after this many wrong access keys |
+| `max_conns_per_ip` | 16 | concurrent connections per source address |
+| `conn_burst`, `conn_rate` | 10, 2 | new connections per source address (burst, per second) |
+| `limit_loopback` | 0 | also apply the per-address limits to loopback clients |
+
+Per-address limits skip loopback by default because local tunnels (SSH port
+forwarding, stunnel) make every bridge appear as `127.0.0.1`. Such tunnels
+also weaken the protection against resuming another bridge's link, since
+all clients share one address; prefer a VPN (e.g. WireGuard) that keeps a
+distinct address per bridge. Invalid or out-of-range option values are
+errors, and the server refuses to start without an operating-system random
+source.
 server address routes through that secured network.
 
 To test a server without hardware:

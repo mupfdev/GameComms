@@ -118,7 +118,9 @@ games with other players regardless of physical distance.
      ESP32 per N-Gage.
 3. N-Gage: replace the game's `gamecomms.dll` with the matching build
    (see the list below), start a multiplayer game and select the bridge
-   when asked.
+   when asked. Or install `PhantomLink.sis`: it copies the right
+   `gamecomms.dll` to `E:\System\Libs` for the game you pick and can
+   configure the ESP32 bridge over Bluetooth (docs/BUILD.md).
 
 ## Which DLL for which game
 

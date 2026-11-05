@@ -1,0 +1,99 @@
+/** @file PhantomLink.rss
+ *
+ *  Copyright (c) 2023-2026, Michael Fitzmayer. All rights reserved.
+ *  SPDX-License-Identifier: MIT
+ *
+ **/
+
+NAME PLNK
+
+#include <eikon.rh>
+#include <avkon.rsg>
+#include <avkon.rh>
+#include <avkon.mbg>
+#include <avkon.loc>
+
+#include "PhantomLink.hrh"
+
+RESOURCE RSS_SIGNATURE {}
+
+RESOURCE TBUF
+{
+    buf = "PhantomLink";
+}
+
+RESOURCE EIK_APP_INFO
+{
+    menubar = r_pl_menubar;
+    cba = R_AVKON_SOFTKEYS_OPTIONS_EXIT;
+}
+
+RESOURCE MENU_BAR r_pl_menubar
+{
+    titles =
+    {
+        MENU_TITLE { menu_pane = r_pl_menu; }
+    };
+}
+
+RESOURCE MENU_PANE r_pl_menu
+{
+    items =
+    {
+        MENU_ITEM { command = EPlCmdSelect; txt = "Select"; },
+        MENU_ITEM { command = EPlCmdGames; txt = "Games"; },
+        MENU_ITEM { command = EPlCmdBridge; txt = "Bridge setup"; },
+        MENU_ITEM { command = EPlCmdRead; txt = "Read from bridge"; },
+        MENU_ITEM { command = EPlCmdWrite; txt = "Send to bridge"; },
+        MENU_ITEM { command = EPlCmdReboot; txt = "Reboot bridge"; },
+        MENU_ITEM { command = EPlCmdSetup; txt = "Bridge setup mode"; },
+        MENU_ITEM { command = EPlCmdFactory; txt = "Factory reset"; },
+        MENU_ITEM { command = EPlCmdChoose; txt = "Choose bridge"; },
+        MENU_ITEM { command = EPlCmdAbout; txt = "About"; },
+        MENU_ITEM { command = EAknCmdExit; txt = "Exit"; }
+    };
+}
+
+RESOURCE DIALOG r_pl_text_query
+{
+    flags = EGeneralQueryFlags;
+    buttons = R_AVKON_SOFTKEYS_OK_CANCEL;
+    items =
+    {
+        DLG_LINE
+        {
+            type = EAknCtQuery;
+            id = EGeneralQuery;
+            control = AVKON_DATA_QUERY
+            {
+                layout = EDataLayout;
+                label = "Value";
+                control = EDWIN
+                {
+                    flags = EEikEdwinNoHorizScrolling | EEikEdwinResizable;
+                    width = 5;
+                    maxlength = 64;
+                };
+            };
+        }
+    };
+}
+
+RESOURCE DIALOG r_pl_confirm_query
+{
+    flags = EGeneralQueryFlags;
+    buttons = R_AVKON_SOFTKEYS_YES_NO;
+    items =
+    {
+        DLG_LINE
+        {
+            type = EAknCtQuery;
+            id = EGeneralQuery;
+            control = AVKON_CONFIRMATION_QUERY
+            {
+                layout = EConfirmationLayout;
+                label = "Are you sure?";
+            };
+        }
+    };
+}

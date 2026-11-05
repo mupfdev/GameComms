@@ -1,0 +1,27 @@
+/** @file PhantomLink.hrh
+ *
+ *  Command identifiers shared by the resource file and the application.
+ *
+ *  Copyright (c) 2023-2026, Michael Fitzmayer. All rights reserved.
+ *  SPDX-License-Identifier: MIT
+ *
+ **/
+
+#ifndef PHANTOMLINK_HRH
+#define PHANTOMLINK_HRH
+
+enum TPhantomLinkCommands
+{
+    EPlCmdSelect = 0x6001,
+    EPlCmdGames,
+    EPlCmdBridge,
+    EPlCmdRead,
+    EPlCmdWrite,
+    EPlCmdReboot,
+    EPlCmdSetup,
+    EPlCmdFactory,
+    EPlCmdChoose,
+    EPlCmdAbout
+};
+
+#endif /* PHANTOMLINK_HRH */

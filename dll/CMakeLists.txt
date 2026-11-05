@@ -74,3 +74,9 @@ foreach(v ${GC_VARIANTS})
     set(GC_VARIANT_NUMBER ${v})
     add_subdirectory(variant v${v})
 endforeach()
+
+# Symbian application (game selection, bridge setup) and the SIS installer.
+option(GC_BUILD_APP "Build the PhantomLink Symbian application" ON)
+if(GC_BUILD_APP)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../app app)
+endif()

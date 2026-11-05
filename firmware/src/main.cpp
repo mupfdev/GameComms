@@ -306,20 +306,30 @@ static void webReboot()
 /* serial console                                                      */
 /* ------------------------------------------------------------------ */
 
-static void printStatus()
+static void printStatus(Print &out)
 {
-    Serial.printf("GameComms bridge %s\n", BRIDGE_VERSION);
-    Serial.printf("  bt name   : %s (pin %s)\n", cfg.btname.c_str(), cfg.pin.c_str());
-    Serial.printf("  device    : %s, link state %d\n", btConnected ? "connected" : "-", br.dev.state);
-    Serial.printf("  wifi      : %s %s rssi %d\n", cfg.ssid.c_str(),
-                  WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str() : "(down)", WiFi.RSSI());
-    Serial.printf("  server    : %s:%u state %d link %d\n", cfg.host.c_str(), cfg.port, br.srv_state, br.srv.state);
-    Serial.printf("  messages  : dev->srv %lu srv->dev %lu, retx dev %lu srv %lu\n", (unsigned long)br.st_dev_msgs,
-                  (unsigned long)br.st_srv_msgs, (unsigned long)br.dev.st_retx, (unsigned long)br.srv.st_retx);
-    Serial.printf("  free heap : %u (lowest %u)\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
+    out.printf("GameComms bridge %s\n", BRIDGE_VERSION);
+    out.printf("  bt name   : %s (pin %s)\n", cfg.btname.c_str(), cfg.pin.c_str());
+    out.printf("  device    : %s, link state %d\n", btConnected ? "connected" : "-", br.dev.state);
+    out.printf("  wifi      : %s %s rssi %d\n", cfg.ssid.c_str(),
+               WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str() : "(down)", WiFi.RSSI());
+    out.printf("  server    : %s:%u state %d link %d\n", cfg.host.c_str(), cfg.port, br.srv_state, br.srv.state);
+    out.printf("  messages  : dev->srv %lu srv->dev %lu, retx dev %lu srv %lu\n", (unsigned long)br.st_dev_msgs,
+               (unsigned long)br.st_srv_msgs, (unsigned long)br.dev.st_retx, (unsigned long)br.srv.st_retx);
+    out.printf("  free heap : %u (lowest %u)\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
 }
 
-static void handleCommand(String line)
+/* Restart after the reply had time to leave (Bluetooth console). */
+static void restartNow(Print &out)
+{
+    out.flush();
+    delay(300);
+    ESP.restart();
+}
+
+/* One console command. The same command set is served on the serial port and
+   on the Bluetooth configuration channel (see btPump). */
+static void handleCommand(String line, Print &out)
 {
     line.trim();
     if (line.length() == 0) {
@@ -329,13 +339,13 @@ static void handleCommand(String line)
     String cmd = sp < 0 ? line : line.substring(0, sp);
     String rest = sp < 0 ? "" : line.substring(sp + 1);
     if (cmd == "help") {
-        Serial.println("commands: status | show | set <ssid|pass|host|port|key|btname|pin|verbose> <value> | save | reboot | setup | factory");
+        out.println("commands: status | show | set <ssid|pass|host|port|key|btname|pin|verbose> <value> | save | reboot | setup | factory");
     } else if (cmd == "status") {
-        printStatus();
+        printStatus(out);
     } else if (cmd == "show") {
-        Serial.printf("ssid=%s\nhost=%s\nport=%u\nkey=%s\nbtname=%s\npin=%s\nverbose=%u\n", cfg.ssid.c_str(),
-                      cfg.host.c_str(), cfg.port, cfg.key.length() ? "(set)" : "", cfg.btname.c_str(),
-                      cfg.pin.c_str(), cfg.verbose);
+        out.printf("ssid=%s\npass=%s\nhost=%s\nport=%u\nkey=%s\nbtname=%s\npin=%s\nverbose=%u\n", cfg.ssid.c_str(),
+                   cfg.pass.length() ? "(set)" : "", cfg.host.c_str(), cfg.port, cfg.key.length() ? "(set)" : "",
+                   cfg.btname.c_str(), cfg.pin.c_str(), cfg.verbose);
     } else if (cmd == "set") {
         int sp2 = rest.indexOf(' ');
         String k = sp2 < 0 ? rest : rest.substring(0, sp2);
@@ -357,24 +367,136 @@ static void handleCommand(String line)
         } else if (k == "verbose") {
             cfg.verbose = (uint8_t)v.toInt();
         } else {
-            Serial.println("unknown key");
+            out.println("unknown key");
             return;
         }
-        Serial.println("ok (use 'save' and 'reboot' to apply)");
+        out.println("ok (use 'save' and 'reboot' to apply)");
     } else if (cmd == "save") {
         saveConfig();
-        Serial.println("saved");
+        out.println("saved");
     } else if (cmd == "reboot") {
-        ESP.restart();
+        out.println("rebooting");
+        restartNow(out);
     } else if (cmd == "setup") {
+        out.println("restarting into setup mode");
+        out.flush();
         restartIntoSetup();
     } else if (cmd == "factory") {
         prefs.begin("gcbridge", false);
         prefs.clear();
         prefs.end();
-        ESP.restart();
+        out.println("factory reset, rebooting");
+        restartNow(out);
     } else {
-        Serial.println("unknown command, try 'help'");
+        out.println("unknown command, try 'help'");
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Bluetooth configuration channel                                     */
+/* ------------------------------------------------------------------ */
+
+/* The configuration client (the PhantomLink app on the N-Gage) uses the
+   same SPP channel as the game. A connection that starts with BT_CFG_MAGIC
+   becomes a text console with the commands of the serial console, one
+   command per line. Every reply ends with a line "END". Anything else is
+   handed to the bridge unchanged (GCL frames never start with this text
+   in practice, see docs/PROTOCOL.md). */
+static const char BT_CFG_MAGIC[] = "GCCFG1";
+#define BT_CFG_MAGIC_LEN 6
+#define BT_SNIFF_MS      400
+
+enum BtMode
+{
+    BT_NONE,
+    BT_SNIFF,
+    BT_GAME,
+    BT_CONFIG
+};
+static BtMode btMode = BT_NONE;
+static uint8_t btSniff[BT_CFG_MAGIC_LEN];
+static size_t btSniffLen = 0;
+static uint32_t btSniffSince = 0;
+static String btCmdline;
+
+static void btStartGame(uint32_t now)
+{
+    btMode = BT_GAME;
+    btConnected = true;
+    bridge_dev_connected(&br, btPeer, now);
+    if (cfg.verbose) {
+        Serial.printf("[%8lu] free heap %u (lowest %u)\n", (unsigned long)now, (unsigned)ESP.getFreeHeap(),
+                      (unsigned)ESP.getMinFreeHeap());
+    }
+    if (btSniffLen) {
+        bridge_dev_input(&br, btSniff, btSniffLen, now);
+        btSniffLen = 0;
+    }
+}
+
+static void btStartConfig()
+{
+    btMode = BT_CONFIG;
+    btSniffLen = 0;
+    btCmdline = "";
+    Serial.println("Bluetooth configuration session");
+    SerialBT.printf("OK GCCFG1 %s\r\nEND\r\n", BRIDGE_VERSION);
+}
+
+static void btOnOpen(uint32_t now)
+{
+    btMode = BT_SNIFF;
+    btSniffLen = 0;
+    btSniffSince = now;
+}
+
+static void btOnClose(uint32_t now)
+{
+    if (btMode == BT_GAME && btConnected) {
+        btConnected = false;
+        bridge_dev_disconnected(&br, now);
+    }
+    btMode = BT_NONE;
+    btSniffLen = 0;
+}
+
+static void btPump(uint32_t now)
+{
+    if (btMode == BT_SNIFF) {
+        while (btMode == BT_SNIFF && SerialBT.available() > 0) {
+            uint8_t c = (uint8_t)SerialBT.read();
+            btSniff[btSniffLen++] = c;
+            if (c != (uint8_t)BT_CFG_MAGIC[btSniffLen - 1]) {
+                btStartGame(now);
+            } else if (btSniffLen == BT_CFG_MAGIC_LEN) {
+                btStartConfig();
+            }
+        }
+        if (btMode == BT_SNIFF && now - btSniffSince >= BT_SNIFF_MS) {
+            btStartGame(now); /* the device waits for us or sends slowly */
+        }
+    }
+    if (btMode == BT_GAME) {
+        uint8_t buf[256];
+        int n;
+        while ((n = SerialBT.available()) > 0) {
+            n = SerialBT.readBytes(buf, n > (int)sizeof(buf) ? sizeof(buf) : n);
+            bridge_dev_input(&br, buf, (size_t)n, millis());
+        }
+    } else if (btMode == BT_CONFIG) {
+        while (btMode == BT_CONFIG && SerialBT.available() > 0) {
+            char c = (char)SerialBT.read();
+            if (c == '\n' || c == '\r') {
+                btCmdline.trim();
+                if (btCmdline.length()) {
+                    handleCommand(btCmdline, SerialBT);
+                    SerialBT.print("END\r\n");
+                }
+                btCmdline = "";
+            } else if (btCmdline.length() < 200) {
+                btCmdline += c;
+            }
+        }
     }
 }
 
@@ -435,6 +557,7 @@ void setup()
         web->begin();
         Serial.println("Setup mode: join 'GameCommsBridge-Setup' and open http://192.168.4.1/");
         Serial.println("or use the console: set ssid <name> / set pass <pw> / save / reboot");
+        Serial.println("or use the PhantomLink app on the N-Gage (Bluetooth)");
     } else {
         WiFi.mode(WIFI_STA);
         /* Modem sleep must stay on: with Bluetooth running, the Wi-Fi driver
@@ -455,7 +578,7 @@ void loop()
     while (Serial.available()) {
         char c = (char)Serial.read();
         if (c == '\n' || c == '\r') {
-            handleCommand(cmdline);
+            handleCommand(cmdline, Serial);
             cmdline = "";
         } else if (cmdline.length() < 200) {
             cmdline += c;
@@ -482,28 +605,13 @@ void loop()
     /* Bluetooth transport events */
     if (btClosed) {
         btClosed = false;
-        if (btConnected) {
-            btConnected = false;
-            bridge_dev_disconnected(&br, now);
-        }
+        btOnClose(now);
     }
     if (btOpened) {
         btOpened = false;
-        btConnected = true;
-        bridge_dev_connected(&br, btPeer, now);
-        if (cfg.verbose) {
-            Serial.printf("[%8lu] free heap %u (lowest %u)\n", (unsigned long)now, (unsigned)ESP.getFreeHeap(),
-                          (unsigned)ESP.getMinFreeHeap());
-        }
+        btOnOpen(now);
     }
-    if (btConnected) {
-        uint8_t buf[256];
-        int n;
-        while ((n = SerialBT.available()) > 0) {
-            n = SerialBT.readBytes(buf, n > (int)sizeof(buf) ? sizeof(buf) : n);
-            bridge_dev_input(&br, buf, (size_t)n, millis());
-        }
-    }
+    btPump(now);
 
     /* Wi-Fi */
     if (!web) {

@@ -172,6 +172,14 @@ jobs:
       - name: Check DLL variants (UIDs, export count)
         shell: pwsh
         run: python tests/compat/check_variants.py --built out/build/all/dll/out
+      - name: Check app game list
+        shell: pwsh
+        run: python tests/compat/check_app_games.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: PhantomLink-sis
+          path: out/build/all/dll/app/PhantomLink.sis
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         with:
           name: gcbridge-windows
@@ -221,6 +229,7 @@ jobs:
           required="pcbridge/windows/gcbridge.exe pcbridge/windows/gcbridge.ini
                     server/windows/gamecommsd.exe server/linux-x86_64/gamecommsd
                     firmware/esp32dev/firmware.bin firmware/esp32dev/firmware-factory.bin"
+          required="$required ngage/PhantomLink.sis"
           for v in $(seq 1 11); do required="$required ngage/v$v/gamecomms.dll"; done
           missing=0
           for f in $required; do
@@ -270,6 +279,7 @@ jobs:
             `PhantomLink.zip` contains:
             - `pcbridge/windows/` - PC bridge `gcbridge.exe` with `gcbridge.ini`
             - `server/linux-x86_64/`, `server/windows/` - server `gamecommsd`
+            - `ngage/PhantomLink.sis` - Symbian app: pick a game to install its `gamecomms.dll`, configure the ESP32 bridge over Bluetooth
             - `ngage/v1` ... `ngage/v11/` - replacement `gamecomms.dll`, one per variant (see docs/COMPATIBILITY.md)
             - `firmware/esp32dev/` - ESP32 bridge firmware (see FLASHING.txt)
           files: PhantomLink.zip

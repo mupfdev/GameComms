@@ -60,6 +60,20 @@ Each variant is linked in its own build folder (`build/dll/v1`, `v2`, ...),
 because the toolchain's `dlltool` writes temporary files with fixed names.
 If an older build folder exists, delete it before building.
 
+### PhantomLink Symbian app
+
+The same build also creates the N-Gage application `PhantomLink.sis`
+(`build/dll/app/PhantomLink.sis`). It contains all DLL variants and lets you
+
+- pick a game from a list: the matching `gamecomms.dll` is copied to
+  `E:\System\Libs` (if the game ships its own copy in its folder, replace
+  that one as described below);
+- configure the ESP32 bridge over Bluetooth (see "Bluetooth configuration").
+
+Install the SIS on the memory card. Disable it with
+`cmake -B build -DGC_BUILD_APP=OFF`. The game list is kept in sync with the
+README by `python tests/compat/check_app_games.py`.
+
 ### Installing on the N-Gage
 
 1. Copy the game's `gamecomms.dll` (in `\System\Apps\<game>\`) to the PC
@@ -155,6 +169,24 @@ reboot
 - `key` is only needed if the server requires an access key.
 - `status` shows the current state, `setup` restarts in setup mode,
   `factory` erases all settings.
+
+### Bluetooth configuration
+
+The PhantomLink app (menu "Bridge setup") reads and writes the same
+settings as the serial console: Wi-Fi SSID and password, server host, port,
+key, Bluetooth name, PIN and verbose, plus reboot, setup mode and factory
+reset. Passwords and the key are never sent back to the phone; leave them
+unchanged to keep the saved values.
+
+The configuration shares the Bluetooth SPP channel with the game. A
+connection whose first bytes are `GCCFG1` is a configuration session; any
+other connection is a game session as before. Configuration is therefore only
+possible while no game is connected. Protocol: the phone sends `GCCFG1\n`,
+the bridge answers `OK GCCFG1 <version>` and `END`. After that every line is
+a serial console command (`show`, `set <key> <value>`, `save`, `reboot`,
+`setup`, `factory`, `status`, `help`) and each reply ends with a line `END`
+(`reboot`, `setup` and `factory` restart the bridge without `END`). Pairing
+uses the bridge PIN, so change the default `1234`.
 
 ## PC bridge (Linux and Windows)
 

@@ -10,6 +10,7 @@
 #       pcbridge/windows/gcbridge.exe, gcbridge.ini
 #       server/windows/gamecommsd.exe, gamecommsd.conf
 #       ngage/vN/gamecomms.dll                  (N = GC_VARIANTS)
+#       ngage/PhantomLink.sis                   (Symbian app with all variants)
 
 include(ExternalProject)
 
@@ -48,7 +49,8 @@ ExternalProject_Add(server
     BUILD_ALWAYS ON)
 
 # dll/CMakeLists.txt selects the N-Gage toolchain itself (NGAGESDK).
-# The DLLs are written to <binary dir>/out/vN/gamecomms.dll; no install step.
+# The DLLs are written to <binary dir>/out/vN/gamecomms.dll and the app
+# installer to <binary dir>/app/PhantomLink.sis; no install step.
 ExternalProject_Add(dll
     SOURCE_DIR     ${CMAKE_SOURCE_DIR}/dll
     BINARY_DIR     ${CMAKE_BINARY_DIR}/dll
@@ -56,6 +58,7 @@ ExternalProject_Add(dll
     CMAKE_ARGS     -DCMAKE_BUILD_TYPE=Release
                    -DCMAKE_PREFIX_PATH=${GC_NGAGESDK}/sdk/extras/lib/cmake
                    -DGC_VARIANTS=${gc_variants_arg}
+                   -DGC_BUILD_APP=ON
     INSTALL_COMMAND ""
     BUILD_ALWAYS   ON)
 
@@ -67,6 +70,7 @@ add_custom_target(dist ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${GC_STAGE_DIR}/server/bin ${GC_DIST_DIR}/server/windows
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/server/deploy/gamecommsd.conf ${GC_DIST_DIR}/server/windows/
     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/dll/out ${GC_DIST_DIR}/ngage
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_BINARY_DIR}/dll/app/PhantomLink.sis ${GC_DIST_DIR}/ngage/
     COMMENT "Staging binaries in ${GC_DIST_DIR}"
     VERBATIM)
 add_dependencies(dist pcbridge server dll)

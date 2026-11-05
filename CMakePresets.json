@@ -34,7 +34,7 @@
       "name": "N-Gage",
       "displayName": "Nokia N-Gage",
       "inherits": "base",
-      "description": "All GAMECOMMS.DLL variants (N-Gage SDK toolchain, needs NGAGESDK)",
+      "description": "All GAMECOMMS.DLL variants and the PhantomLink app (N-Gage SDK toolchain, needs NGAGESDK)",
       "cacheVariables": {
         "GC_COMPONENT": "dll",
         "CMAKE_TOOLCHAIN_FILE": "$env{NGAGESDK}/cmake/ngage-toolchain.cmake",
@@ -69,7 +69,7 @@
         "base",
         "windows-msvc"
       ],
-      "description": "PC bridge, server and all DLL variants, staged in out/build/all/dist/PhantomLink (needs NGAGESDK)",
+      "description": "PC bridge, server, all DLL variants and the PhantomLink app, staged in out/build/all/dist/PhantomLink (needs NGAGESDK)",
       "cacheVariables": {
         "GC_COMPONENT": "all"
       }
@@ -78,8 +78,16 @@
   "buildPresets": [
     {
       "name": "N-Gage",
-      "displayName": "All DLL variants",
+      "displayName": "All DLL variants and the app",
       "configurePreset": "N-Gage"
+    },
+    {
+      "name": "N-Gage-app",
+      "displayName": "Companion app",
+      "configurePreset": "N-Gage",
+      "targets": [
+        "PhantomLink.sis"
+      ]
     },
     {
       "name": "N-Gage-v1",

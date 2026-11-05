@@ -15,7 +15,9 @@
 #define _WIN32_WINNT 0x0600
 #include <winsock2.h>
 #include <ws2tcpip.h>
+
 #include <windows.h> /* must precede bcrypt.h, which is not self-contained */
+
 #include <bcrypt.h>
 typedef SOCKET sock_t;
 #define SOCK_INVALID   INVALID_SOCKET

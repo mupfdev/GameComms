@@ -1,0 +1,13 @@
+; PhantomLink.pkg - generated from PhantomLink.pkg.in by CMake
+;
+&EN
+
+#{"PhantomLink"},(@PL_UID3_PKG@),1,0,0
+
+;Supports Series 60 v 0.9
+(0x101F6F88), 0, 0, 0, {"Series60ProductID"}
+
+"@PL_BIN@/PhantomLink.app"-"!:\System\Apps\PhantomLink\PhantomLink.app"
+"@PL_BIN@/PhantomLink.rsc"-"!:\System\Apps\PhantomLink\PhantomLink.rsc"
+"@PL_BIN@/PhantomLink.aif"-"!:\System\Apps\PhantomLink\PhantomLink.aif"
+@PL_DLL_LINES@

@@ -149,7 +149,7 @@ md5sum, or with `python tools/gc_identify.py dll gamecomms.dll`.
 | Catan                                    | v5       | e8d317204a763d71215680d567eb71e0 | 57       |                                                                  |
 | Mile High Pinball                        | v5       | e8d317204a763d71215680d567eb71e0 | 57       |                                                                  |
 | Pathway to Glory                         | v5       | e8d317204a763d71215680d567eb71e0 | 57       |                                                                  |
-| Requiem of Hell                          | v5       | e8d317204a763d71215680d567eb71e0 | 57       |                                                                  |
+| Requiem of Hell                          | v5       | e8d317204a763d71215680d567eb71e0 | 57       | ![Not%20Working](https://img.shields.io/badge/Not%20Working-red) |
 | The King of Fighters Extreme             | v5       | e8d317204a763d71215680d567eb71e0 | 57       |                                                                  |
 | Tom Clancy's Splinter Cell: Chaos Theory | v5       | e8d317204a763d71215680d567eb71e0 | 57       |                                                                  |
 | Call of Duty                             | v6       | bb02377c5361597f8d8503f5de584845 | 57       |                                                                  |
@@ -173,7 +173,7 @@ md5sum, or with `python tools/gc_identify.py dll gamecomms.dll`.
 | ONE                                      | v10      | 827df54717bc210daa96aef9e12de4a3 | 63       |                                                                  |
 | Rifts: Promise of Power                  | v10      | 827df54717bc210daa96aef9e12de4a3 | 63       |                                                                  |
 | System Rush                              | v10      | 827df54717bc210daa96aef9e12de4a3 | 63       |                                                                  |
-| The Roots: Gates of Chaos                | v10      | 827df54717bc210daa96aef9e12de4a3 | 63       |                                                                  |
+| The Roots: Gates of Chaos                | v10      | 827df54717bc210daa96aef9e12de4a3 | 63       | ![Not%20Working](https://img.shields.io/badge/Not%20Working-red) |
 | Asphalt: Urban GT 2                      | v11      | 75536306ef48b1928b4562890d01c9c6 | 63       |   ![Working](https://img.shields.io/badge/Working-brightgreen)   |
 | Habbo Islands                            | v11      | 75536306ef48b1928b4562890d01c9c6 | 63       |                                                                  |
 | Warhammer 40,000: Glory in Death         | v11      | 75536306ef48b1928b4562890d01c9c6 | 63       |                                                                  |

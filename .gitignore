@@ -7,8 +7,6 @@ server/out/
 server/export/
 __pycache__/
 .cc_tmp/
-legacy/server-prototype/out/
-legacy/server-prototype/export/
-legacy/server-prototype/.vs/
 .pio/
 tmp
+session-state

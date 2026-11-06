@@ -170,6 +170,27 @@ reboot
 - `status` shows the current state, `setup` restarts in setup mode,
   `factory` erases all settings.
 
+The ESP32 services server discovery, DNS, TCP connection and writes without
+blocking the Bluetooth receive loop. TCP output uses a bounded queue; if it
+fills, the transport is closed and the reliable link attempts to resume.
+An updated sender respects the receiver's advertised link window. Update the
+server and N-Gage DLL as well as the ESP32 to limit bursts in both directions;
+older peers remain compatible but do not limit their own bursts. Bluetooth
+writes still use Arduino's transmit queue and can block when it is full.
+
+For Bluetooth disconnects, capture the serial console log from connection
+through the failure. SPP open and close events include their handle, status,
+port status on close, and whether the close was asynchronous (`async=0`
+means locally initiated). A close marked `active 1` applies to the tracked
+connection. The firmware prints link counters and current and lowest heap at
+an active close; `status` also shows these counters. Bluetooth input uses a
+bounded 4096-byte buffer, and its dropped-byte counter and overflow messages
+show when that buffer fills. Frame errors count errors received by the bridge,
+not errors on the N-Gage or bytes lost before the Bluetooth data callback.
+Write failures count calls that did not accept the full buffer; Bluetooth
+writes accepted by the stack may still fail later. If SPP events are reported
+lost, reboot before relying on connection state diagnostics.
+
 ### Bluetooth configuration
 
 The PhantomLink app (menu "Bridge setup") reads and writes the same

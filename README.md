@@ -137,7 +137,7 @@ md5sum, or with `python tools/gc_identify.py dll gamecomms.dll`.
 | Puyo Pop                                 | v2       | 8863fdea897f1c63807ad69252a3566f | 55       | ![Working](https://img.shields.io/badge/Working-brightgreen) |
 | Puzzle Bobble VS                         | v2       | 8863fdea897f1c63807ad69252a3566f | 55       |        |
 | Tomb Raider                              | v2       | 8863fdea897f1c63807ad69252a3566f | 55       |        |
-| Tony Hawk's Pro Skater                   | v2       | 8863fdea897f1c63807ad69252a3566f | 55       | ![Partial](https://img.shields.io/badge/Partial-orange) |
+| Tony Hawk's Pro Skater                   | v2       | 8863fdea897f1c63807ad69252a3566f | 55       | ![Working](https://img.shields.io/badge/Working-brightgreen) |
 | Asphalt Urban GT                         | v3       | f6fbc3c745ae0ecf584b3ef7ec4371ef | 56       | ![Partial](https://img.shields.io/badge/Partial-orange) |
 | FIFA Football 2004                       | v3       | f6fbc3c745ae0ecf584b3ef7ec4371ef | 56       |        |
 | NCAA Football 2004                       | v3       | f6fbc3c745ae0ecf584b3ef7ec4371ef | 56       |        |

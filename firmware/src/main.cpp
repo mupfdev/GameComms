@@ -16,10 +16,14 @@
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
-#include <WiFiUdp.h>
 #include <esp_bt_device.h>
 #include <esp_random.h>
 #include <esp_spp_api.h>
+#include <freertos/queue.h>
+
+#include "async_server.h"
+#include "bt_event_filter.h"
+#include "bt_rx_buffer.h"
 
 extern "C" {
 #include "bridge_core.h"
@@ -105,29 +109,58 @@ static void saveConfig()
 /* ------------------------------------------------------------------ */
 
 static BluetoothSerial SerialBT;
-static WiFiClient tcp;
+static AsyncServer tcp;
 static bridge br;
-static volatile bool btOpened = false;
-static volatile bool btClosed = false;
 static uint8_t btPeer[6];
 static bool btConnected = false;
 static bool tcpWanted = false;
-static bool tcpConnected = false;
 static WebServer *web = nullptr;
-static IPAddress discoveredIp;
-static uint16_t discoveredPort = 0;
+static uint32_t btWriteFailures = 0;
+static uint32_t tcpWriteFailures = 0;
+
+struct BtEvent
+{
+    bool open;
+    int status;
+    uint32_t handle;
+    uint32_t portStatus;
+    bool asynchronous;
+    uint32_t time;
+    uint32_t generation;
+    uint8_t peer[6];
+};
+
+#define BT_EVENT_QUEUE_LEN 16
+static StaticQueue_t btEventQueueStorage;
+static uint8_t btEventQueueBuffer[BT_EVENT_QUEUE_LEN * sizeof(BtEvent)];
+static QueueHandle_t btEventQueue;
+static portMUX_TYPE btEventMux = portMUX_INITIALIZER_UNLOCKED;
+static uint32_t btEventsDropped = 0;
+static bt_event_filter btFilter = { 0 };
+static bt_event_filter btCallbackFilter = { 0 };
+static bt_rx_buffer btRx;
+static uint32_t btGeneration = 0;
+static uint32_t btReportedDropped = 0;
 
 static void io_dev_write(void *, const gc_u8 *d, size_t n)
 {
     if (btConnected) {
-        SerialBT.write(d, n);
+        size_t written = SerialBT.write(d, n);
+        if (written != n) {
+            btWriteFailures++;
+            Serial.printf("[%8lu] Bluetooth write accepted %u of %u bytes\n", (unsigned long)millis(),
+                          (unsigned)written, (unsigned)n);
+        }
     }
 }
 
 static void io_srv_write(void *, const gc_u8 *d, size_t n)
 {
-    if (tcpConnected && tcp.connected()) {
-        tcp.write(d, n);
+    AsyncServer::Error error = tcp.write(d, n);
+    if (error != AsyncServer::OK) {
+        tcpWriteFailures++;
+        Serial.printf("[%8lu] TCP frame enqueue failed (%d, %u bytes)\n", (unsigned long)millis(),
+                      (int)error, (unsigned)n);
     }
 }
 
@@ -139,10 +172,7 @@ static void io_srv_connect(void *)
 static void io_srv_disconnect(void *)
 {
     tcpWanted = false;
-    if (tcpConnected) {
-        tcp.stop();
-        tcpConnected = false;
-    }
+    tcp.stop();
 }
 
 static void io_log(void *, const char *line)
@@ -152,77 +182,89 @@ static void io_log(void *, const char *line)
     }
 }
 
-/* SPP events arrive on the Bluetooth task: only set flags here */
+/* SPP callbacks run on the Bluetooth task; process events in the main loop. */
 static void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 {
-    if (event == ESP_SPP_SRV_OPEN_EVT) {
-        memcpy(btPeer, param->srv_open.rem_bda, 6);
-        btOpened = true;
-    } else if (event == ESP_SPP_CLOSE_EVT) {
-        btClosed = true;
+    BtEvent e = {};
+    if (event == ESP_SPP_DATA_IND_EVT) {
+        portENTER_CRITICAL(&btEventMux);
+        if (btCallbackFilter.active_handle == param->data_ind.handle && btCallbackFilter.active_handle != 0) {
+            bt_rx_write(&btRx, param->data_ind.data, param->data_ind.len);
+        }
+        portEXIT_CRITICAL(&btEventMux);
+        return;
     }
+    if (event == ESP_SPP_SRV_OPEN_EVT) {
+        e.open = true;
+        e.status = param->srv_open.status;
+        e.handle = param->srv_open.handle;
+        if (e.status == ESP_SPP_SUCCESS) {
+            memcpy(e.peer, param->srv_open.rem_bda, sizeof(e.peer));
+        }
+    } else if (event == ESP_SPP_CLOSE_EVT) {
+        e.status = param->close.status;
+        e.handle = param->close.handle;
+        e.portStatus = param->close.port_status;
+        e.asynchronous = param->close.async;
+    } else {
+        return;
+    }
+    portENTER_CRITICAL(&btEventMux);
+    if ((e.open && bt_event_open(&btCallbackFilter, e.handle, e.status == ESP_SPP_SUCCESS)) ||
+        (!e.open && bt_event_close(&btCallbackFilter, e.handle, e.status == ESP_SPP_SUCCESS, e.asynchronous))) {
+        bt_rx_reset(&btRx);
+    }
+    e.generation = btRx.generation;
+    portEXIT_CRITICAL(&btEventMux);
+    e.time = millis();
+    if (xQueueSend(btEventQueue, &e, 0) != pdTRUE) {
+        portENTER_CRITICAL(&btEventMux);
+        btEventsDropped++;
+        portEXIT_CRITICAL(&btEventMux);
+    }
+}
+
+/* Disable BluetoothSerial's small RX queue; sppCallback receives the data with its handle. */
+static void btDataCallback(const uint8_t *, size_t)
+{
+}
+
+static size_t btRead(uint8_t *data, size_t len)
+{
+    size_t n;
+    portENTER_CRITICAL(&btEventMux);
+    n = bt_rx_read(&btRx, btGeneration, data, len);
+    portEXIT_CRITICAL(&btEventMux);
+    return n;
+}
+
+static uint32_t btDroppedBytes()
+{
+    uint32_t dropped;
+    portENTER_CRITICAL(&btEventMux);
+    dropped = btRx.dropped;
+    portEXIT_CRITICAL(&btEventMux);
+    return dropped;
 }
 
 /* ------------------------------------------------------------------ */
 /* server discovery / connection                                       */
 /* ------------------------------------------------------------------ */
 
-static bool discoverServer()
+static void tryConnectServer(uint32_t now)
 {
-    WiFiUDP udp;
-    if (!udp.begin(0)) {
-        return false;
-    }
-    IPAddress bcast = WiFi.localIP();
-    bcast[3] = 255;
+    uint8_t broadcast[4];
+    IPAddress local = WiFi.localIP();
     IPAddress mask = WiFi.subnetMask();
-    for (int i = 0; i < 4; i++) {
-        bcast[i] = (WiFi.localIP()[i] & mask[i]) | (~mask[i] & 0xFF);
-    }
-    udp.beginPacket(bcast, DISCOVERY_PORT);
-    udp.print("GCDISCOVER1");
-    udp.endPacket();
-    uint32_t t0 = millis();
-    while (millis() - t0 < 800) {
-        int n = udp.parsePacket();
-        if (n > 0) {
-            char buf[96] = { 0 };
-            udp.read(buf, sizeof(buf) - 1);
-            int port = 0;
-            if (sscanf(buf, "GCSERVER1 %d", &port) == 1 && port > 0) {
-                discoveredIp = udp.remoteIP();
-                discoveredPort = (uint16_t)port;
-                udp.stop();
-                Serial.printf("server discovered at %s:%u\n", discoveredIp.toString().c_str(), discoveredPort);
-                return true;
-            }
-        }
-        delay(10);
-    }
-    udp.stop();
-    return false;
-}
-
-static void tryConnectServer()
-{
-    bool ok;
     tcpWanted = false;
-    if (cfg.host == "auto" || cfg.host.length() == 0) {
-        if (!discoverServer()) {
-            bridge_srv_disconnected(&br, millis());
-            return;
-        }
-        ok = tcp.connect(discoveredIp, discoveredPort, 3000);
-    } else {
-        ok = tcp.connect(cfg.host.c_str(), cfg.port, 3000);
+    for (int i = 0; i < 4; i++) {
+        broadcast[i] = (local[i] & mask[i]) | (~mask[i] & 0xFF);
     }
-    if (!ok) {
-        bridge_srv_disconnected(&br, millis());
-        return;
+    AsyncServer::Error error = tcp.start(cfg.host.c_str(), cfg.port, DISCOVERY_PORT, broadcast, now);
+    if (error == AsyncServer::INVALID_ARGUMENT) {
+        Serial.printf("[%8lu] invalid TCP server configuration\n", (unsigned long)now);
+        bridge_srv_disconnected(&br, now);
     }
-    tcp.setNoDelay(true);
-    tcpConnected = true;
-    bridge_srv_connected(&br, millis());
 }
 
 /* ------------------------------------------------------------------ */
@@ -306,6 +348,16 @@ static void webReboot()
 /* serial console                                                      */
 /* ------------------------------------------------------------------ */
 
+static void printLinkDiagnostics(Print &out, const char *name, const gc_link &link)
+{
+    out.printf("  %s link   : state %d tx %lu rx %lu retx %lu dup %lu ooo %lu backpressure %lu\n", name, link.state,
+               (unsigned long)link.st_tx_msgs, (unsigned long)link.st_rx_msgs, (unsigned long)link.st_retx,
+               (unsigned long)link.st_dup, (unsigned long)link.st_ooo, (unsigned long)link.st_backpressure);
+    out.printf("  %s frames : ok %lu crc %lu cobs %lu oversize %lu short %lu\n", name,
+               (unsigned long)link.rx.frames_ok, (unsigned long)link.rx.err_crc, (unsigned long)link.rx.err_cobs,
+               (unsigned long)link.rx.err_oversize, (unsigned long)link.rx.err_short);
+}
+
 static void printStatus(Print &out)
 {
     out.printf("GameComms bridge %s\n", BRIDGE_VERSION);
@@ -316,6 +368,11 @@ static void printStatus(Print &out)
     out.printf("  server    : %s:%u state %d link %d\n", cfg.host.c_str(), cfg.port, br.srv_state, br.srv.state);
     out.printf("  messages  : dev->srv %lu srv->dev %lu, retx dev %lu srv %lu\n", (unsigned long)br.st_dev_msgs,
                (unsigned long)br.st_srv_msgs, (unsigned long)br.dev.st_retx, (unsigned long)br.srv.st_retx);
+    printLinkDiagnostics(out, "bt", br.dev);
+    printLinkDiagnostics(out, "tcp", br.srv);
+    out.printf("  writes    : bt failures %lu tcp failures %lu\n", (unsigned long)btWriteFailures,
+               (unsigned long)tcpWriteFailures);
+    out.printf("  bt rx     : dropped %lu bytes\n", (unsigned long)btDroppedBytes());
     out.printf("  free heap : %u (lowest %u)\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
 }
 
@@ -460,11 +517,57 @@ static void btOnClose(uint32_t now)
     btSniffLen = 0;
 }
 
+static void btProcessEvents()
+{
+    BtEvent e;
+    uint32_t dropped;
+    portENTER_CRITICAL(&btEventMux);
+    dropped = btEventsDropped;
+    btEventsDropped = 0;
+    portEXIT_CRITICAL(&btEventMux);
+    if (dropped) {
+        Serial.printf("[%8lu] ERROR: lost %lu SPP events; connection state may be wrong, reboot required\n",
+                      (unsigned long)millis(), (unsigned long)dropped);
+    }
+    while (xQueueReceive(btEventQueue, &e, 0) == pdTRUE) {
+        uint32_t now = millis();
+        if (e.open) {
+            int accepted = bt_event_open(&btFilter, e.handle, e.status == ESP_SPP_SUCCESS);
+            Serial.printf("[%8lu] SPP open handle %lu status %d accepted %d (processed at %lu)\n",
+                          (unsigned long)e.time, (unsigned long)e.handle, e.status, accepted, (unsigned long)now);
+            if (accepted) {
+                memcpy(btPeer, e.peer, sizeof(btPeer));
+                btGeneration = e.generation;
+                btOnOpen(now);
+            }
+        } else {
+            int active = bt_event_close(&btFilter, e.handle, e.status == ESP_SPP_SUCCESS, e.asynchronous);
+            Serial.printf("[%8lu] SPP close handle %lu status %d port_status %lu async %d active %d (processed at %lu)\n",
+                          (unsigned long)e.time, (unsigned long)e.handle, e.status, (unsigned long)e.portStatus,
+                          e.asynchronous ? 1 : 0, active, (unsigned long)now);
+            if (active) {
+                printLinkDiagnostics(Serial, "bt", br.dev);
+                printLinkDiagnostics(Serial, "tcp", br.srv);
+                Serial.printf("  writes: bt failures %lu tcp failures %lu; bt rx dropped %lu; heap %u (lowest %u)\n",
+                              (unsigned long)btWriteFailures, (unsigned long)tcpWriteFailures,
+                              (unsigned long)btDroppedBytes(), (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
+                btOnClose(now);
+            }
+        }
+    }
+}
+
 static void btPump(uint32_t now)
 {
+    uint8_t c;
+    uint32_t dropped = btDroppedBytes();
+    if (dropped != btReportedDropped) {
+        Serial.printf("[%8lu] Bluetooth RX overflow: dropped %lu bytes (total %lu)\n", (unsigned long)now,
+                      (unsigned long)(dropped - btReportedDropped), (unsigned long)dropped);
+        btReportedDropped = dropped;
+    }
     if (btMode == BT_SNIFF) {
-        while (btMode == BT_SNIFF && SerialBT.available() > 0) {
-            uint8_t c = (uint8_t)SerialBT.read();
+        while (btMode == BT_SNIFF && btRead(&c, 1) == 1) {
             btSniff[btSniffLen++] = c;
             if (c != (uint8_t)BT_CFG_MAGIC[btSniffLen - 1]) {
                 btStartGame(now);
@@ -478,14 +581,12 @@ static void btPump(uint32_t now)
     }
     if (btMode == BT_GAME) {
         uint8_t buf[256];
-        int n;
-        while ((n = SerialBT.available()) > 0) {
-            n = SerialBT.readBytes(buf, n > (int)sizeof(buf) ? sizeof(buf) : n);
-            bridge_dev_input(&br, buf, (size_t)n, millis());
+        size_t n;
+        for (int i = 0; i < 8 && (n = btRead(buf, sizeof(buf))) > 0; i++) {
+            bridge_dev_input(&br, buf, n, millis());
         }
     } else if (btMode == BT_CONFIG) {
-        while (btMode == BT_CONFIG && SerialBT.available() > 0) {
-            char c = (char)SerialBT.read();
+        for (int i = 0; i < 256 && btMode == BT_CONFIG && btRead(&c, 1) == 1; i++) {
             if (c == '\n' || c == '\r') {
                 btCmdline.trim();
                 if (btCmdline.length()) {
@@ -532,6 +633,12 @@ void setup()
 #if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
     SerialBT.disableSSP();
 #endif
+    btEventQueue = xQueueCreateStatic(BT_EVENT_QUEUE_LEN, sizeof(BtEvent), btEventQueueBuffer, &btEventQueueStorage);
+    if (!btEventQueue) {
+        Serial.println("Bluetooth event queue initialization failed");
+        return;
+    }
+    SerialBT.onData(btDataCallback);
     SerialBT.register_callback(sppCallback);
     if (!SerialBT.begin(cfg.btname)) {
         Serial.println("Bluetooth init failed");
@@ -603,41 +710,38 @@ void loop()
     }
 
     /* Bluetooth transport events */
-    if (btClosed) {
-        btClosed = false;
-        btOnClose(now);
+    if (btEventQueue) {
+        btProcessEvents();
+        btPump(millis());
     }
-    if (btOpened) {
-        btOpened = false;
-        btOnOpen(now);
-    }
-    btPump(now);
 
     /* Wi-Fi */
     if (!web) {
         bool up = WiFi.status() == WL_CONNECTED;
-        bridge_set_wifi(&br, up ? 1 : 0, (gc_i8)WiFi.RSSI(), now);
+        bridge_set_wifi(&br, up ? 1 : 0, (gc_i8)WiFi.RSSI(), millis());
     }
 
     /* TCP */
-    if (tcpConnected && !tcp.connected()) {
-        tcpConnected = false;
-        tcp.stop();
-        bridge_srv_disconnected(&br, now);
+    if (tcpWanted && WiFi.status() == WL_CONNECTED) {
+        tryConnectServer(millis());
     }
-    if (tcpConnected) {
+    AsyncServer::Result result = tcp.poll(millis());
+    if (result.event == AsyncServer::CONNECTED) {
+        bridge_srv_connected(&br, millis());
+    } else if (result.event == AsyncServer::DISCONNECTED) {
+        Serial.printf("[%8lu] TCP transport closed (error %d, system %d)\n", (unsigned long)millis(),
+                      (int)result.error, result.system_error);
+        bridge_srv_disconnected(&br, millis());
+    }
+    if (tcp.connected()) {
         uint8_t buf[512];
-        int n;
-        while ((n = tcp.available()) > 0) {
-            n = tcp.read(buf, n > (int)sizeof(buf) ? sizeof(buf) : n);
+        for (int i = 0; i < 4 && tcp.connected(); i++) {
+            int n = tcp.read(buf, sizeof(buf));
             if (n <= 0) {
                 break;
             }
             bridge_srv_input(&br, buf, (size_t)n, millis());
         }
-    }
-    if (tcpWanted && !tcpConnected && WiFi.status() == WL_CONNECTED) {
-        tryConnectServer();
     }
 
     bridge_poll(&br, millis());

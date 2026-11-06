@@ -121,6 +121,8 @@ games with other players regardless of physical distance.
    when asked. Or install `PhantomLink.sis`: it copies the right
    `gamecomms.dll` to `E:\System\Libs` for the game you pick and can
    configure the ESP32 bridge over Bluetooth (docs/BUILD.md).
+   In the game list, Up and Down wrap at the ends; Left and Right move
+   six entries at a time, stopping at the first or last entry.
 
 ## Which DLL for which game
 

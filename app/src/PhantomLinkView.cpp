@@ -6,6 +6,7 @@
  **/
 
 #include "PhantomLinkView.h"
+#include "GameNavigation.h"
 #include "PhantomLink.hrh"
 #include <aknappui.h>
 #include <avkon.hrh>
@@ -33,7 +34,7 @@ CPhantomLinkView::~CPhantomLinkView()
     delete iListBox;
 }
 
-void CPhantomLinkView::SetListL(CDesCArray *aItems, TInt aCurrent)
+void CPhantomLinkView::SetListL(CDesCArray *aItems, TInt aCurrent, TBool aGameNavigation)
 {
     CleanupStack::PushL(aItems);
     CAknSingleStyleListBox *listBox = new (ELeave) CAknSingleStyleListBox;
@@ -59,6 +60,7 @@ void CPhantomLinkView::SetListL(CDesCArray *aItems, TInt aCurrent)
 
     delete iListBox;
     iListBox = listBox;
+    iGameNavigation = aGameNavigation;
     DrawNow();
 }
 
@@ -88,6 +90,35 @@ TKeyResponse CPhantomLinkView::OfferKeyEventL(const TKeyEvent &aKeyEvent, TEvent
     }
     if (aType == EEventKey && (aKeyEvent.iCode == EKeyDevice3 || aKeyEvent.iCode == EKeyEnter)) {
         iEikonEnv->EikAppUi()->HandleCommandL(EPlCmdSelect);
+        return EKeyWasConsumed;
+    }
+    if (iGameNavigation && aType == EEventKey) {
+        TGameNavigationDirection direction;
+        switch (aKeyEvent.iCode) {
+        case EKeyUpArrow:
+            direction = EGameNavUp;
+            break;
+        case EKeyDownArrow:
+            direction = EGameNavDown;
+            break;
+        case EKeyLeftArrow:
+            direction = EGameNavLeft;
+            break;
+        case EKeyRightArrow:
+            direction = EGameNavRight;
+            break;
+        default:
+            return iListBox->OfferKeyEventL(aKeyEvent, aType);
+        }
+        TInt current = iListBox->CurrentItemIndex();
+        TInt count = iListBox->Model()->ItemTextArray()->MdcaCount();
+        TInt next = GameNavigationIndex(current, count, direction);
+        if (next != current) {
+            iListBox->SetCurrentItemIndex(next);
+            iListBox->ScrollToMakeItemVisible(next);
+            iListBox->UpdateScrollBarsL();
+            iListBox->DrawNow();
+        }
         return EKeyWasConsumed;
     }
     return iListBox->OfferKeyEventL(aKeyEvent, aType);

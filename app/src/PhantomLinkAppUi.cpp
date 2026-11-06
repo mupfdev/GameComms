@@ -69,7 +69,7 @@ void CPhantomLinkAppUi::ShowGamesL()
         items->AppendL(line);
     }
     CleanupStack::Pop();
-    iView->SetListL(items, 0);
+    iView->SetListL(items, 0, ETrue);
 }
 
 void CPhantomLinkAppUi::ShowBridgeL()
@@ -86,7 +86,7 @@ void CPhantomLinkAppUi::ShowBridgeL()
         items->AppendL(line);
     }
     CleanupStack::Pop();
-    iView->SetListL(items, 0);
+    iView->SetListL(items, 0, EFalse);
 }
 
 void CPhantomLinkAppUi::RefreshBridgeL()

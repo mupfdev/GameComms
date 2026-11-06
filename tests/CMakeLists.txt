@@ -69,6 +69,10 @@ add_executable(test_bt_output ${ROOT}/tests/sim/test_bt_output.c)
 target_include_directories(test_bt_output PRIVATE ${ROOT}/firmware/src ${ROOT}/protocol/include)
 add_test(NAME firmware_bt_output COMMAND test_bt_output)
 
+add_executable(test_game_navigation ${ROOT}/tests/sim/test_game_navigation.c)
+target_include_directories(test_game_navigation PRIVATE ${ROOT}/app/src)
+add_test(NAME app_game_navigation COMMAND test_game_navigation)
+
 add_executable(test_tcp_frame_input ${ROOT}/tests/sim/test_tcp_frame_input.c
     ${ROOT}/firmware/src/bridge_core.c ${ROOT}/protocol/src/gc_codec.c
     ${ROOT}/protocol/src/gc_link.c ${ROOT}/protocol/src/gc_msg.c)

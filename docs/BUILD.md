@@ -388,6 +388,11 @@ The protocol is still unencrypted TCP and the shared access key is sent in
 cleartext; the opt-in and key requirement reduce accidental exposure but are
 not substitutes for transport security.
 
+`max_outq` limits queued outbound messages per peer (default 1024, range
+1 to 4096). Memory is allocated as messages are queued, so a higher limit
+can increase server memory use and latency under congestion. An explicit
+value in `gamecommsd.conf` overrides the default.
+
 Built-in abuse limits (all can be set in `gamecommsd.conf` or on the
 command line):
 

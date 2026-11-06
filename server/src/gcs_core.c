@@ -201,7 +201,7 @@ void gcs_default_config(gcs_config *cfg)
     cfg->link_grace_ms = 20000;
     cfg->reserve_ms = 180000;
     cfg->pending_ms = 60000;
-    cfg->max_outq = 256;
+    cfg->max_outq = 1024;
     cfg->log_level = 2;
     cfg->hello_timeout_ms = 10000;
     cfg->max_auth_failures = 3;
@@ -484,6 +484,37 @@ static void peer_link_msg(void *ctx, const gc_u8 *data, size_t len)
     peer_handle_msg((gcs_peer *)ctx, data, len);
 }
 
+static int peer_can_accept(void *ctx, const gc_u8 *data, size_t len)
+{
+    gcs_peer *p = (gcs_peer *)ctx;
+    gcs_session *s = p->session;
+    gc_msg m;
+    int i;
+
+    if (!s || p->slot >= GC_MAX_PLAYERS || s->m[p->slot].state != M_ACTIVE ||
+        s->m[p->slot].peer != p || !gc_msg_decode(data, len, &m) || m.type != GC_MT_DATA) {
+        return 1;
+    }
+    if (p->slot != GC_SLOT_HOST && m.u.data.addr != GC_SLOT_HOST && m.u.data.addr != GC_SLOT_ALL) {
+        return 1;
+    }
+    for (i = 0; i < GC_MAX_PLAYERS; i++) {
+        gcs_peer *dest;
+        if (p->slot == GC_SLOT_HOST) {
+            if (i == GC_SLOT_HOST || (m.u.data.addr != GC_SLOT_ALL && m.u.data.addr != i)) {
+                continue;
+            }
+        } else if (i != GC_SLOT_HOST) {
+            continue;
+        }
+        dest = s->m[i].state == M_ACTIVE ? s->m[i].peer : NULL;
+        if (dest && !dest->dead && !dest->doomed && dest->q_count >= p->core->cfg.max_outq) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static gcs_peer *peer_new(gcs_core *core, gcs_conn *conn)
 {
     gcs_peer *p;
@@ -515,7 +546,7 @@ static gcs_peer *peer_new(gcs_core *core, gcs_conn *conn)
     ops.on_msg = peer_link_msg;
     ops.on_state = peer_on_state;
     ops.on_hello = peer_on_hello;
-    ops.can_accept = NULL;
+    ops.can_accept = peer_can_accept;
     gc_link_init(&p->link, &cfg, &ops, p);
     gc_link_listen(&p->link, core->now);
     return p;

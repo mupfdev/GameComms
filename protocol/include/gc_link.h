@@ -123,10 +123,10 @@ typedef struct
      *  gc_link_accept(). May be NULL: then the link accepts itself and
      *  resumes if the link id matches its previous one. */
     void (*on_hello)(void *ctx, const gc_hello *hello);
-    /** optional back-pressure: return 0 if the owner cannot take another
-     *  message right now.  The message is then treated as not received
+    /** optional back-pressure: return 0 if the owner cannot take this
+     *  message right now. The message is treated as not received
      *  (not acknowledged) and the peer retransmits it later. */
-    int (*can_accept)(void *ctx);
+    int (*can_accept)(void *ctx, const gc_u8 *msg, size_t len);
 } gc_link_ops;
 
 typedef struct

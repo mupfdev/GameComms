@@ -449,7 +449,7 @@ static void link_handle_frame(gc_link *l, const gc_u8 *body, size_t len, gc_u32 
     case GC_FT_DATA:
     {
         gc_i16 d = SEQ_DIFF(seq, l->rx_next);
-        if (d == 0 && l->ops.can_accept && !l->ops.can_accept(l->ctx)) {
+        if (d == 0 && l->ops.can_accept && !l->ops.can_accept(l->ctx, p, plen)) {
             l->st_backpressure++; /* not acknowledged: peer retries */
         } else if (d == 0) {
             l->rx_next++;

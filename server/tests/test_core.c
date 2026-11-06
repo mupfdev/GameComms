@@ -298,6 +298,13 @@ static void reset_world(void)
 
 /* ----------------------------------------------------------------- */
 
+static void test_default_outbound_queue_limit(void)
+{
+    gcs_config cfg;
+    gcs_default_config(&cfg);
+    CHECK_EQ(cfg.max_outq, 1024);
+}
+
 static void test_register_required(void)
 {
     gc_msg m;
@@ -902,6 +909,106 @@ static void stall_client_queue(int host, int cli, int n)
     }
 }
 
+static void test_backpressure_preserves_peer_on_resume(void)
+{
+    int i;
+    gc_u32 sid;
+    world_with(0, 4, NULL);
+    new_client(0, "host");
+    new_client(1, "stalled");
+    do_register(0, GC_API_V2);
+    do_register(1, GC_API_V2);
+    sid = host_open(0, 0x53, GC_API_V2, 4, 0);
+    join(1, sid, 0x53, GC_API_V2, 0);
+    C[1].n_msgs = 0;
+    stall_client_queue(0, 1, GC_LINK_QUEUE + 4);
+    for (i = 0; i < 8; i++) {
+        send_data(0, 1, "later");
+    }
+    pump(300);
+    CHECK(C[0].open && C[1].open);
+    CHECK(gc_link_is_up(&C[0].link));
+    CHECK(C[0].link.q_count > 0);
+    CHECK(C[0].link.st_retx > 0);
+
+    disconnect_client(&C[1]);
+    C[1].deaf = 0;
+    connect_client(&C[1]);
+    pump(1000);
+    CHECK(C[0].open && C[1].open);
+    CHECK_EQ(C[1].link.st_resumes, 1);
+    CHECK_EQ(count(&C[1], GC_MT_DATA), GC_LINK_QUEUE + 12);
+    for (i = 0; i < C[1].n_msgs; i++) {
+        if (C[1].last[i].type == GC_MT_DATA) {
+            const char *expected = i < GC_LINK_QUEUE + 4 ? "fill" : "later";
+            CHECK_EQ(C[1].last[i].u.data.len, strlen(expected));
+            CHECK(memcmp(C[1].last[i].u.data.payload, expected, strlen(expected)) == 0);
+        }
+    }
+    CHECK(find(&C[0], GC_MT_PEER_LEFT) == NULL);
+    send_data(1, GC_SLOT_HOST, "still joined");
+    pump(10);
+    CHECK(find(&C[0], GC_MT_DATA) != NULL);
+}
+
+static void test_backpressure_only_blocks_destinations(void)
+{
+    world_with(0, 4, NULL);
+    new_client(0, "host");
+    new_client(1, "stalled");
+    new_client(2, "other");
+    do_register(0, GC_API_V2);
+    do_register(1, GC_API_V2);
+    do_register(2, GC_API_V2);
+    host_open(0, 0x54, GC_API_V2, 4, 0);
+    join(1, 0, 0x54, GC_API_V2, 0);
+    join(2, 0, 0x54, GC_API_V2, 0);
+    stall_client_queue(0, 1, GC_LINK_QUEUE + 4);
+    C[2].n_msgs = 0;
+    send_data(0, 2, "targeted");
+    pump(10);
+    CHECK_EQ(count(&C[2], GC_MT_DATA), 1);
+    send_data(0, GC_SLOT_ALL, "broadcast");
+    pump(10);
+    CHECK_EQ(count(&C[2], GC_MT_DATA), 1);
+    CHECK(C[0].open && C[1].open && C[2].open);
+    C[1].deaf = 0;
+    pump(1000);
+    CHECK_EQ(count(&C[2], GC_MT_DATA), 2);
+    CHECK(C[0].open && C[1].open && C[2].open);
+}
+
+static void test_backpressure_client_to_host(void)
+{
+    int i, sent;
+    world_with(0, 4, NULL);
+    new_client(0, "host");
+    new_client(1, "client");
+    do_register(0, GC_API_V2);
+    do_register(1, GC_API_V2);
+    host_open(0, 0x55, GC_API_V2, 4, 0);
+    join(1, 0, 0x55, GC_API_V2, 0);
+    C[0].n_msgs = 0;
+    C[0].deaf = 1;
+    for (sent = 0; sent < GC_LINK_QUEUE + 4; ) {
+        for (i = 0; i < 8 && sent < GC_LINK_QUEUE + 4; i++, sent++) {
+            send_data(1, GC_SLOT_HOST, "fill");
+        }
+        pump(2);
+    }
+    for (i = 0; i < 8; i++) {
+        send_data(1, GC_SLOT_HOST, "later");
+    }
+    pump(300);
+    CHECK(C[0].open && C[1].open);
+    CHECK(C[1].link.q_count > 0);
+    C[0].deaf = 0;
+    pump(1000);
+    CHECK(C[0].open && C[1].open);
+    CHECK_EQ(count(&C[0], GC_MT_DATA), GC_LINK_QUEUE + 12);
+    CHECK(find(&C[1], GC_MT_SESSION_ENDED) == NULL);
+}
+
 /* Re-entrant peer destruction: a send that overflows the stalled
  * client's queue killed it synchronously while session_end() still
  * held the member pointer: NULL pointer dereference, server crash. */
@@ -1197,6 +1304,7 @@ static const char *only;
 int main(int argc, char **argv)
 {
     only = argc > 1 ? argv[1] : NULL;
+    RUNF(test_default_outbound_queue_limit);
     RUNF(test_register_required);
     RUNF(test_matchmaking_and_slots);
     RUNF(test_incompatible_and_isolation);
@@ -1214,6 +1322,9 @@ int main(int argc, char **argv)
     RUNF(test_sec_rehello_uaf);
     RUNF(test_sec_bad_hello_then_close_uaf);
     RUNF(test_sec_close_then_hello_crash);
+    RUNF(test_backpressure_preserves_peer_on_resume);
+    RUNF(test_backpressure_only_blocks_destinations);
+    RUNF(test_backpressure_client_to_host);
     RUNF(test_sec_reentrant_kill_session_end);
     RUNF(test_sec_reentrant_kill_kick);
     RUNF(test_sec_no_hijack_of_attached_peer);

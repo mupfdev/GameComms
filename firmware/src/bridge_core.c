@@ -181,9 +181,11 @@ static void dev_write_cb(void *ctx, const gc_u8 *d, size_t n)
     }
 }
 
-static int dev_can_accept(void *ctx)
+static int dev_can_accept(void *ctx, const gc_u8 *msg, size_t len)
 {
     bridge *b = (bridge *)ctx;
+    (void)msg;
+    (void)len;
     return b->to_srv.count < BRIDGE_FIFO_LEN;
 }
 
@@ -277,9 +279,11 @@ static void srv_write_cb(void *ctx, const gc_u8 *d, size_t n)
     }
 }
 
-static int srv_can_accept(void *ctx)
+static int srv_can_accept(void *ctx, const gc_u8 *msg, size_t len)
 {
     bridge *b = (bridge *)ctx;
+    (void)msg;
+    (void)len;
     return b->to_dev.count < BRIDGE_FIFO_LEN;
 }
 

@@ -140,7 +140,13 @@ fields, followed by one byte "resumed" (0 or 1).
 - Lost frames are resent after a timeout (400 ms on Bluetooth, 1 s on
   TCP), doubling up to 3 s or 5 s.
 - A receiver that cannot take more data does not acknowledge it, and the
-  sender tries again later.
+  sender tries again later. The server applies this backpressure to routed
+  game data when a destination's outbound queue is full, preserving the
+  peer and message order while the destination catches up. Backpressure
+  may reach the game, where a full send queue returns an overflow error.
+  A prolonged stall can still exhaust retry or reconnect limits; this is
+  not unlimited buffering and cannot restore a session after its peer has
+  been removed.
 
 ### 2.4 Keep-alive and timeouts
 

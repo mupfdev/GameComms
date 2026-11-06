@@ -346,9 +346,11 @@ static void test_garbage_input_while_up(void)
 }
 
 static int bp_block = 0;
-static int bp_cb(void *ctx)
+static int bp_cb(void *ctx, const gc_u8 *msg, size_t len)
 {
     (void)ctx;
+    (void)msg;
+    (void)len;
     return !bp_block;
 }
 static void test_backpressure(void)
@@ -373,9 +375,54 @@ static void test_backpressure(void)
     CHECK_EQ(B.rx_errors, 0);
 }
 
+static void pump_delayed(int steps)
+{
+    static gc_u8 tmp[PIPE_CAP];
+    int i;
+    for (i = 0; i < steps; i++) {
+        size_t n;
+        now_ms += 10;
+        if ((now_ms / 10) % 150 == 75 && p_ab.len) {
+            n = p_ab.len;
+            memcpy(tmp, p_ab.buf, n);
+            p_ab.len = 0;
+            gc_link_input(&B.link, tmp, n, now_ms);
+        }
+        if ((now_ms / 10) % 150 == 0 && p_ba.len) {
+            n = p_ba.len;
+            memcpy(tmp, p_ba.buf, n);
+            p_ba.len = 0;
+            gc_link_input(&A.link, tmp, n, now_ms);
+        }
+        gc_link_poll(&A.link, now_ms);
+        gc_link_poll(&B.link, now_ms);
+    }
+}
+
+static void test_delayed_tcp_link(void)
+{
+    setup();
+    A.link.cfg.rto_ms = B.link.cfg.rto_ms = 1000;
+    A.link.cfg.rto_max_ms = B.link.cfg.rto_max_ms = 5000;
+    A.link.cfg.dead_ms = B.link.cfg.dead_ms = 20000;
+    A.link.rto_cur = B.link.rto_cur = 1000;
+    a_next = 0;
+    gc_link_start(&A.link, 14, now_ms);
+    pump_delayed(450);
+    CHECK(gc_link_is_up(&A.link) && gc_link_is_up(&B.link));
+    CHECK_EQ(send_n(&A, &a_next, 16), 16);
+    pump_delayed(1000);
+    CHECK_EQ(B.rx_count, 16);
+    CHECK_EQ(B.rx_errors, 0);
+    CHECK_EQ(A.link.q_count, 0);
+    CHECK(A.link.st_retx > 0);
+    CHECK(gc_link_is_up(&A.link) && gc_link_is_up(&B.link));
+}
+
 int main(void)
 {
     RUN(test_backpressure);
+    RUN(test_delayed_tcp_link);
     RUN(test_handshake);
     RUN(test_bulk_bidirectional);
     RUN(test_corruption_and_loss);

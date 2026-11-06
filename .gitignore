@@ -12,3 +12,4 @@ legacy/server-prototype/export/
 legacy/server-prototype/.vs/
 .pio/
 tmp
+session-state

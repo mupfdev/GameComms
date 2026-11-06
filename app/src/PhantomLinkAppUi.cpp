@@ -203,14 +203,14 @@ void CPhantomLinkAppUi::InstallSelectedL()
         return;
     }
     const TGameEntry &game = GameAt(index);
-    TInt err = GameInstaller::Install(game.iVariant, ((CApaApplication *)Application())->AppFullName());
+    Install(game.iVariant, ((CApaApplication *)Application())->AppFullName(), game.iTargetDir);
     TBuf<160> text;
     if (err == KErrNone) {
         TBuf<64> name;
         name.Copy(TPtrC8((const TUint8 *)game.iName).Left(60));
         text.Copy(_L("gamecomms.dll for "));
         text.Append(name);
-        text.Append(_L(" copied to E:\\System\\Libs"));
+        text.Append(_L(" copied"));
         InfoL(text);
     } else {
         DescribeError(err, text);

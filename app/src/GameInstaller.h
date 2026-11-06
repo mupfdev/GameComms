@@ -18,7 +18,7 @@ class GameInstaller
   public:
     /** Returns KErrNone or a system-wide error code (for example KErrInUse
      *  while the game is running, KErrNotFound without memory card). */
-    static TInt Install(TInt aVariant, const TDesC &aAppFullName);
+    static TInt Install(TInt aVariant, const TDesC &aAppFullName, const char *aTargetDir = NULL);
 };
 
 #endif /* GAMEINSTALLER_H */

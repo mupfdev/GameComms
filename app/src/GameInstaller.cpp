@@ -9,11 +9,20 @@
 #include <bautils.h>
 #include <f32file.h>
 
-_LIT(KTargetDir, "E:\\System\\Libs\\");
-_LIT(KTargetFile, "E:\\System\\Libs\\gamecomms.dll");
+_LIT(KDefaultTargetDir, "E:\\System\\Libs\\");
+_LIT(KTargetName, "gamecomms.dll");
 
-static TInt DoInstallL(RFs &aFs, TInt aVariant, const TDesC &aAppFullName)
+static TInt DoInstallL(RFs &aFs, TInt aVariant, const TDesC &aAppFullName, const char *aTargetDir)
 {
+    TFileName KTargetDir;
+    if (aTargetDir) {
+        KTargetDir.Copy(TPtrC8((const TUint8 *)aTargetDir).Left(KMaxFileName - 16));
+    } else {
+        KTargetDir.Copy(KDefaultTargetDir);
+    }
+    TFileName KTargetFile(KTargetDir);
+    KTargetFile.Append(KTargetName);
+
     TParsePtrC app(aAppFullName);
     TFileName src;
     src.Copy(app.DriveAndPath());
@@ -46,7 +55,7 @@ static TInt DoInstallL(RFs &aFs, TInt aVariant, const TDesC &aAppFullName)
     return err;
 }
 
-TInt GameInstaller::Install(TInt aVariant, const TDesC &aAppFullName)
+TInt GameInstaller::Install(TInt aVariant, const TDesC &aAppFullName, const char *aTargetDir)
 {
     if (aVariant < 1 || aVariant > 11) {
         return KErrArgument;
@@ -57,7 +66,7 @@ TInt GameInstaller::Install(TInt aVariant, const TDesC &aAppFullName)
         return err;
     }
     TInt result = KErrNone;
-    TRAP(err, result = DoInstallL(fs, aVariant, aAppFullName));
+    DoInstallL(fs, aVariant, aAppFullName, aTargetDir));
     fs.Close();
     return err != KErrNone ? err : result;
 }

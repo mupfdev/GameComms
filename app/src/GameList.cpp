@@ -23,7 +23,7 @@ static const TGameEntry KGames[] = {
     { "Glimmerati", 10 },
     { "Habbo Islands", 11 },
     { "High Seize", 6 },
-    { "Marcel Desailly Pro Soccer", 1 },
+    { "Marcel Desailly Pro Soccer", 1, "E:\\System\\Apps\\6RAU\\" },
     { "Mile High Pinball", 5 },
     { "MotoGP", 2 },
     { "NCAA Football 2004", 3 },

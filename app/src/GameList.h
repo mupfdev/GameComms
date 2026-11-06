@@ -17,6 +17,7 @@ struct TGameEntry
 {
     const char *iName;
     TInt iVariant; /* 1..11 */
+    const char *iTargetDir; /* optional, NULL = E:\System\Libs\ */
 };
 
 TInt GameCount();

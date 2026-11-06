@@ -117,10 +117,23 @@ Classic and will not work. You need one bridge per N-Gage.
 On dual-core boards, server discovery, DNS and TCP connection attempts run
 on the core opposite the Arduino loop. The loop retains ownership of the
 bridge and services Bluetooth while those operations wait; TCP writes are
-buffered and nonblocking. If the TCP output buffer fills, the bridge logs the
-problem and reconnects. This reduces scheduling stalls but does not eliminate
-Wi-Fi/Bluetooth radio coexistence or signal-quality limitations. Check actual
-reliability on the board with an N-Gage, including server and Wi-Fi outages.
+buffered and nonblocking. Bluetooth SPP writes are queued and paced by write
+completion and congestion events. If either Bluetooth buffer overflows or an
+SPP write fails or times out, the bridge logs the problem and closes that
+connection so the device can reconnect. The serial `status` command reports RX
+buffering, dropped bytes, frame errors, TX queue usage and congestion, link
+backpressure and queue occupancy, and the maximum SPP write and main-loop
+intervals since boot. Write latency includes waiting until the loop processes
+the completion; loop intervals include console and setup operations. Input is
+processed at frame boundaries to drain forwarding queues between frames. TCP
+reads pause when the device FIFO fills, except while server acknowledgments are
+outstanding; periodic reads also allow control frames to progress. Sustained
+congestion can still cause link-layer retries. If the TCP output buffer fills,
+the bridge logs the problem and reconnects.
+
+This reduces scheduling stalls but does not eliminate Wi-Fi/Bluetooth radio
+coexistence or signal-quality limitations. Check actual reliability on the
+board with an N-Gage, including server and Wi-Fi outages.
 
 The on-board LED shows the state:
 

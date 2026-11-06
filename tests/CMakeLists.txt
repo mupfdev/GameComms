@@ -65,6 +65,17 @@ add_executable(test_tcp_output ${ROOT}/tests/sim/test_tcp_output.c)
 target_include_directories(test_tcp_output PRIVATE ${ROOT}/firmware/src)
 add_test(NAME firmware_tcp_output COMMAND test_tcp_output)
 
+add_executable(test_bt_output ${ROOT}/tests/sim/test_bt_output.c)
+target_include_directories(test_bt_output PRIVATE ${ROOT}/firmware/src ${ROOT}/protocol/include)
+add_test(NAME firmware_bt_output COMMAND test_bt_output)
+
+add_executable(test_tcp_frame_input ${ROOT}/tests/sim/test_tcp_frame_input.c
+    ${ROOT}/firmware/src/bridge_core.c ${ROOT}/protocol/src/gc_codec.c
+    ${ROOT}/protocol/src/gc_link.c ${ROOT}/protocol/src/gc_msg.c)
+target_include_directories(test_tcp_frame_input PRIVATE ${ROOT}/firmware/src ${ROOT}/protocol/include)
+target_compile_definitions(test_tcp_frame_input PRIVATE GC_LINK_QUEUE=4 BRIDGE_FIFO_LEN=4)
+add_test(NAME firmware_tcp_frame_input COMMAND test_tcp_frame_input)
+
 # real sockets: start gamecommsd, run gcsim against it
 add_executable(gamecommsd ${ROOT}/server/src/gcs_main.c)
 target_link_libraries(gamecommsd gc_server_core)

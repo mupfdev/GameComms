@@ -12,20 +12,25 @@
  **/
 
 #include <Arduino.h>
-#include <BluetoothSerial.h>
 #include <Preferences.h>
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <esp_bt_device.h>
+#include <esp_bt_main.h>
+#include <esp_gap_bt_api.h>
+#include <esp_idf_version.h>
 #include <esp_random.h>
 #include <esp_spp_api.h>
+#include <freertos/stream_buffer.h>
 #include <errno.h>
 #include <lwip/sockets.h>
 #include <new>
 
 extern "C" {
 #include "bridge_core.h"
+#include "bt_output.h"
+#include "tcp_frame_input.h"
 #include "tcp_output.h"
 }
 
@@ -108,7 +113,6 @@ static void saveConfig()
 /* bridge glue                                                         */
 /* ------------------------------------------------------------------ */
 
-static BluetoothSerial SerialBT;
 static WiFiClient tcp;
 static bridge br;
 static uint8_t btPeer[6];
@@ -130,7 +134,28 @@ static BtEvent btEvents[16];
 static unsigned btEventHead = 0;
 static unsigned btEventCount = 0;
 static uint32_t btHandle = 0;
+static bool btReceiving = false;
 static bool btEventOverflow = false;
+
+/* Callback-owned state is protected by btEventMux; the loop owns btTx. */
+#define BT_RX_BUFFER 2048
+#define BT_TX_CHUNK 512
+#define BT_WRITE_NONE (-2)
+#define BT_WRITE_TIMEOUT_MS 10000
+static StreamBufferHandle_t btRx = nullptr;
+static uint32_t btRxDropped = 0;
+static bool btRxOverflow = false;
+static bool btCongested = false;
+static int btWriteResult = BT_WRITE_NONE;
+static int btWriteStatus = ESP_SPP_SUCCESS;
+static bt_output btTx;
+static uint32_t btWriteSince = 0;
+static uint32_t btWriteMaxMs = 0;
+static uint32_t loopMaxMs = 0;
+static uint32_t btDisconnectSince = 0;
+static bool btDisconnectPending = false;
+static bool btTxOverflow = false;
+static size_t btTxHighWater = 0;
 
 struct ConnectRequest
 {
@@ -149,10 +174,126 @@ static uint32_t connectGeneration = 0;
 static tcp_output tcpOutput;
 static bool tcpOutputFailed = false;
 
+static bool btTxAppend(const uint8_t *d, size_t n)
+{
+    if (btDisconnectPending || btTxOverflow || !bt_output_append(&btTx, d, n)) {
+        btTxOverflow = true;
+        return false;
+    }
+    if (btTx.queue.len > btTxHighWater) {
+        btTxHighWater = btTx.queue.len;
+    }
+    return true;
+}
+
+static void btDisconnect(uint32_t handle, const char *reason)
+{
+    if (btDisconnectPending || !handle) {
+        return;
+    }
+    btDisconnectPending = true;
+    btDisconnectSince = millis();
+    Serial.printf("Bluetooth: %s; closing SPP handle %lu\n", reason, (unsigned long)handle);
+    esp_err_t err = esp_spp_disconnect(handle);
+    if (err != ESP_OK) {
+        Serial.printf("Bluetooth disconnect request failed: %d\n", (int)err);
+    }
+}
+
+static void btTxPump()
+{
+    uint32_t handle;
+    int result, status;
+    bool congested, receiving;
+    portENTER_CRITICAL(&btEventMux);
+    handle = btHandle;
+    receiving = btReceiving;
+    result = btWriteResult;
+    status = btWriteStatus;
+    btWriteResult = BT_WRITE_NONE;
+    congested = btCongested;
+    portEXIT_CRITICAL(&btEventMux);
+    if (btDisconnectPending && receiving && (uint32_t)(millis() - btDisconnectSince) >= BT_WRITE_TIMEOUT_MS) {
+        Serial.println("Bluetooth disconnect timed out; restarting");
+        ESP.restart();
+    }
+    if (!handle || !receiving || btDisconnectPending) {
+        return;
+    }
+    if (btTxOverflow) {
+        btDisconnect(handle, "TX buffer full");
+        return;
+    }
+    if (result != BT_WRITE_NONE) {
+        if (btTx.inflight) {
+            uint32_t elapsed = millis() - btWriteSince;
+            if (elapsed > btWriteMaxMs) {
+                btWriteMaxMs = elapsed;
+            }
+        }
+        if (result <= 0 || !bt_output_complete(&btTx, (size_t)result)) {
+            Serial.printf("Bluetooth write completion: status %d, length %d, pending %u\n",
+                          status, result, (unsigned)btTx.inflight);
+            btDisconnect(handle, "invalid or failed write completion");
+            return;
+        }
+    }
+    if (btTx.inflight && (uint32_t)(millis() - btWriteSince) >= BT_WRITE_TIMEOUT_MS) {
+        btDisconnect(handle, "write completion timed out");
+        return;
+    }
+    if (btTx.inflight || congested) {
+        return;
+    }
+    size_t n = bt_output_begin(&btTx, BT_TX_CHUNK);
+    if (!n) {
+        return;
+    }
+    btWriteSince = millis();
+    esp_err_t err = esp_spp_write(handle, (int)n, btTx.queue.data + btTx.queue.head);
+    if (err != ESP_OK) {
+        Serial.printf("Bluetooth write request failed: %d\n", (int)err);
+        btDisconnect(handle, "write request rejected");
+    }
+}
+
+static size_t btRxAvailable()
+{
+    return btRx ? xStreamBufferBytesAvailable(btRx) : 0;
+}
+
+static size_t btRxRead(uint8_t *buf, size_t n)
+{
+    return btRx ? xStreamBufferReceive(btRx, buf, n, 0) : 0;
+}
+
+/* Output stream for the Bluetooth configuration console. */
+class BtPrint : public Print
+{
+public:
+    size_t write(uint8_t c) override
+    {
+        return write(&c, 1);
+    }
+    size_t write(const uint8_t *b, size_t n) override
+    {
+        return btTxAppend(b, n) ? n : 0;
+    }
+    void flush() override
+    {
+        /* bounded wait, only used right before a restart */
+        for (uint32_t t0 = millis(); btTx.queue.len && millis() - t0 < 300;) {
+            btTxPump();
+            delay(5);
+        }
+    }
+};
+static BtPrint btOut;
+
 static void io_dev_write(void *, const gc_u8 *d, size_t n)
 {
-    if (btConnected && SerialBT.write(d, n) != n) {
-        Serial.println("Bluetooth write failed; link will retry");
+    if (btConnected) {
+        btTxAppend(d, n);
     }
 }
 
@@ -191,20 +332,73 @@ static void io_log(void *, const char *line)
     }
 }
 
-/* SPP callbacks run on the Bluetooth task; retain event order and peer. */
+/* SPP callbacks run on the Bluetooth task: copy or flag only, never parse or
+   block. Lifecycle events retain order and peer for the main loop. */
 static void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 {
+    switch (event) {
+    case ESP_SPP_INIT_EVT:
+        esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
+        esp_spp_start_srv(ESP_SPP_SEC_NONE, ESP_SPP_ROLE_SLAVE, 0, "SerialBT");
+        return;
+    case ESP_SPP_DATA_IND_EVT: {
+        bool accept;
+        portENTER_CRITICAL(&btEventMux);
+        accept = btReceiving && param->data_ind.handle == btHandle && !btRxOverflow;
+        if (btReceiving && param->data_ind.handle == btHandle && btRxOverflow) {
+            btRxDropped += param->data_ind.len;
+        }
+        portEXIT_CRITICAL(&btEventMux);
+        if (accept && btRx) {
+            size_t sent = xStreamBufferSend(btRx, param->data_ind.data, param->data_ind.len, 0);
+            if (sent < param->data_ind.len) {
+                portENTER_CRITICAL(&btEventMux);
+                btRxDropped += param->data_ind.len - sent;
+                btRxOverflow = true;
+                portEXIT_CRITICAL(&btEventMux);
+            }
+        }
+        return;
+    }
+    case ESP_SPP_WRITE_EVT:
+        portENTER_CRITICAL(&btEventMux);
+        if (btReceiving && bt_output_event_matches(btHandle, param->write.handle,
+                                                   param->write.status == ESP_SPP_SUCCESS)) {
+            btWriteStatus = param->write.status;
+            btWriteResult = param->write.status == ESP_SPP_SUCCESS ? param->write.len : -1;
+            btCongested = param->write.cong;
+        }
+        portEXIT_CRITICAL(&btEventMux);
+        return;
+    case ESP_SPP_CONG_EVT:
+        portENTER_CRITICAL(&btEventMux);
+        if (btReceiving && param->cong.handle == btHandle) {
+            btCongested = param->cong.cong;
+        }
+        portEXIT_CRITICAL(&btEventMux);
+        return;
+    default:
+        break;
+    }
+
     BtEvent next = {};
     bool enqueue = false;
+    uint32_t extraHandle = 0;
     portENTER_CRITICAL(&btEventMux);
-    if (event == ESP_SPP_SRV_OPEN_EVT && param->srv_open.status == ESP_SPP_SUCCESS && !btHandle) {
+    if (event == ESP_SPP_SRV_OPEN_EVT && param->srv_open.status == ESP_SPP_SUCCESS && btHandle) {
+        extraHandle = param->srv_open.handle; /* one device at a time */
+    } else if (event == ESP_SPP_SRV_OPEN_EVT && param->srv_open.status == ESP_SPP_SUCCESS) {
         btHandle = param->srv_open.handle;
+        btReceiving = true;
+        btCongested = false;
+        btWriteResult = BT_WRITE_NONE;
         next.opened = true;
         memcpy(next.peer, param->srv_open.rem_bda, sizeof(next.peer));
         enqueue = true;
-    } else if (event == ESP_SPP_CLOSE_EVT && param->close.handle == btHandle && btHandle &&
+    } else if (event == ESP_SPP_CLOSE_EVT && param->close.handle == btHandle && btHandle && btReceiving &&
                (param->close.async || param->close.status == ESP_SPP_SUCCESS)) {
-        btHandle = 0;
+        /* Reserve the handle until the loop has discarded the old RX data. */
+        btReceiving = false;
         next.status = param->close.status;
         next.portStatus = param->close.port_status;
         next.remote = param->close.async;
@@ -219,6 +413,68 @@ static void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         }
     }
     portEXIT_CRITICAL(&btEventMux);
+    if (extraHandle) {
+        esp_spp_disconnect(extraHandle);
+    }
+}
+
+static void gapCallback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
+{
+    if (event == ESP_BT_GAP_PIN_REQ_EVT) {
+        esp_bt_pin_code_t code = {};
+        size_t len = cfg.pin.length() < ESP_BT_PIN_CODE_LEN ? cfg.pin.length() : ESP_BT_PIN_CODE_LEN;
+        memcpy(code, cfg.pin.c_str(), len);
+        esp_bt_gap_pin_reply(param->pin_req.bda, true, (uint8_t)len, code);
+    } else if (event == ESP_BT_GAP_CFM_REQ_EVT) {
+        esp_bt_gap_ssp_confirm_reply(param->cfm_req.bda, true);
+    }
+}
+
+static bool btInit(const char *name, const String &pin)
+{
+    btRx = xStreamBufferCreate(BT_RX_BUFFER, 1);
+    if (!btRx) {
+        return false;
+    }
+    if (!btStarted() && !btStart()) {
+        return false;
+    }
+    if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_UNINITIALIZED && esp_bluedroid_init() != ESP_OK) {
+        return false;
+    }
+    if (esp_bluedroid_get_status() != ESP_BLUEDROID_STATUS_ENABLED && esp_bluedroid_enable() != ESP_OK) {
+        return false;
+    }
+    if (esp_bt_gap_register_callback(gapCallback) != ESP_OK || esp_spp_register_callback(sppCallback) != ESP_OK) {
+        return false;
+    }
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+    esp_spp_cfg_t sppCfg = {};
+    sppCfg.mode = ESP_SPP_MODE_CB;
+    sppCfg.enable_l2cap_ertm = true;
+    sppCfg.tx_buffer_size = 0;
+    if (esp_spp_enhanced_init(&sppCfg) != ESP_OK) {
+#else
+    if (esp_spp_init(ESP_SPP_MODE_CB) != ESP_OK) {
+#endif
+        return false;
+    }
+    esp_bt_dev_set_device_name(name);
+
+    /* The N-Gage only supports Bluetooth 1.1 legacy PIN pairing: fixed PIN. */
+    esp_bt_pin_code_t code = {};
+    size_t len = pin.length() < ESP_BT_PIN_CODE_LEN ? pin.length() : ESP_BT_PIN_CODE_LEN;
+    memcpy(code, pin.c_str(), len);
+    if (esp_bt_gap_set_pin(len ? ESP_BT_PIN_TYPE_FIXED : ESP_BT_PIN_TYPE_VARIABLE, (uint8_t)len, code) != ESP_OK) {
+        Serial.println("Bluetooth PIN could not be set");
+    }
+
+    /* the default loudspeaker class of device does not work with macOS */
+    esp_bt_cod_t cod = {};
+    cod.major = 0b00001;
+    cod.minor = 0b000100;
+    cod.service = 0b00000010110;
+    return esp_bt_gap_set_cod(cod, ESP_BT_INIT_COD) == ESP_OK;
 }
 
 /* ------------------------------------------------------------------ */
@@ -422,14 +678,34 @@ static void webReboot()
 
 static void printStatus(Print &out)
 {
+    uint32_t drops;
+    bool congested;
+    portENTER_CRITICAL(&btEventMux);
+    drops = btRxDropped;
+    congested = btCongested;
+    portEXIT_CRITICAL(&btEventMux);
     out.printf("GameComms bridge %s\n", BRIDGE_VERSION);
     out.printf("  bt name   : %s (pin %s)\n", cfg.btname.c_str(), cfg.pin.c_str());
     out.printf("  device    : %s, link state %d\n", btConnected ? "connected" : "-", br.dev.state);
+    out.printf("  bt rx     : %u buffered, %lu bytes dropped, frame errors crc %lu cobs %lu oversize %lu short %lu\n",
+               (unsigned)btRxAvailable(), (unsigned long)drops, (unsigned long)br.dev.rx.err_crc,
+               (unsigned long)br.dev.rx.err_cobs, (unsigned long)br.dev.rx.err_oversize,
+               (unsigned long)br.dev.rx.err_short);
+    out.printf("  bt tx     : %u buffered, %u peak, %u in flight, congested %s\n", (unsigned)btTx.queue.len,
+               (unsigned)btTxHighWater, (unsigned)btTx.inflight, congested ? "yes" : "no");
     out.printf("  wifi      : %s %s rssi %d\n", cfg.ssid.c_str(),
                WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString().c_str() : "(down)", WiFi.RSSI());
     out.printf("  server    : %s:%u state %d link %d\n", cfg.host.c_str(), cfg.port, br.srv_state, br.srv.state);
     out.printf("  messages  : dev->srv %lu srv->dev %lu, retx dev %lu srv %lu\n", (unsigned long)br.st_dev_msgs,
                (unsigned long)br.st_srv_msgs, (unsigned long)br.dev.st_retx, (unsigned long)br.srv.st_retx);
+    out.printf("  pressure  : dev %lu srv %lu, out-of-order dev %lu srv %lu\n",
+               (unsigned long)br.dev.st_backpressure, (unsigned long)br.srv.st_backpressure,
+               (unsigned long)br.dev.st_ooo, (unsigned long)br.srv.st_ooo);
+    out.printf("  queues    : dev link %u/%u fifo %d/%d, srv link %u/%u fifo %d/%d\n",
+               (unsigned)br.dev.q_count, (unsigned)GC_LINK_QUEUE, br.to_dev.count, BRIDGE_FIFO_LEN,
+               (unsigned)br.srv.q_count, (unsigned)GC_LINK_QUEUE, br.to_srv.count, BRIDGE_FIFO_LEN);
+    out.printf("  latency   : max BT write %lu ms, max loop interval %lu ms (since boot)\n",
+               (unsigned long)btWriteMaxMs, (unsigned long)loopMaxMs);
     out.printf("  free heap : %u (lowest %u)\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());
 }
 
@@ -554,7 +830,7 @@ static void btStartConfig()
     btSniffLen = 0;
     btCmdline = "";
     Serial.println("Bluetooth configuration session");
-    SerialBT.printf("OK GCCFG1 %s\r\nEND\r\n", BRIDGE_VERSION);
+    btOut.printf("OK GCCFG1 %s\r\nEND\r\n", BRIDGE_VERSION);
 }
 
 static void btOnOpen(uint32_t now)
@@ -566,19 +842,41 @@ static void btOnOpen(uint32_t now)
 
 static void btOnClose(uint32_t now)
 {
+    bool overflow;
+    uint32_t drops;
+    portENTER_CRITICAL(&btEventMux);
+    overflow = btRxOverflow;
+    drops = btRxDropped;
+    portEXIT_CRITICAL(&btEventMux);
+    if (overflow && !btDisconnectPending) {
+        Serial.printf("Bluetooth RX buffer overflow: %lu total bytes dropped\n", (unsigned long)drops);
+    }
     if (btMode == BT_GAME && btConnected) {
         btConnected = false;
         bridge_dev_disconnected(&br, now);
     }
     btMode = BT_NONE;
     btSniffLen = 0;
+    bt_output_reset(&btTx);
+    btTxOverflow = false;
+    btDisconnectPending = false;
+    if (btRx && xStreamBufferReset(btRx) != pdPASS) {
+        Serial.println("Bluetooth RX reset failed; restarting");
+        ESP.restart();
+    }
+    portENTER_CRITICAL(&btEventMux);
+    btHandle = 0;
+    btRxOverflow = false;
+    btWriteResult = BT_WRITE_NONE;
+    portEXIT_CRITICAL(&btEventMux);
 }
 
 static void btPump(uint32_t now)
 {
     if (btMode == BT_SNIFF) {
-        while (btMode == BT_SNIFF && SerialBT.available() > 0) {
-            uint8_t c = (uint8_t)SerialBT.read();
+        while (btMode == BT_SNIFF && btRxAvailable() > 0) {
+            uint8_t c = 0;
+            btRxRead(&c, 1);
             btSniff[btSniffLen++] = c;
             if (c != (uint8_t)BT_CFG_MAGIC[btSniffLen - 1]) {
                 btStartGame(now);
@@ -592,19 +890,25 @@ static void btPump(uint32_t now)
     }
     if (btMode == BT_GAME) {
         uint8_t buf[256];
-        int n;
-        while ((n = SerialBT.available()) > 0) {
-            n = SerialBT.readBytes(buf, n > (int)sizeof(buf) ? sizeof(buf) : n);
-            bridge_dev_input(&br, buf, (size_t)n, millis());
+        size_t n;
+        while ((n = btRxRead(buf, sizeof(buf))) > 0) {
+            size_t pos = 0;
+            while (pos < n) {
+                size_t chunk = stream_frame_input_chunk(buf + pos, n - pos);
+                bridge_dev_input(&br, buf + pos, chunk, millis());
+                pos += chunk;
+            }
         }
     } else if (btMode == BT_CONFIG) {
-        while (btMode == BT_CONFIG && SerialBT.available() > 0) {
-            char c = (char)SerialBT.read();
+        while (btMode == BT_CONFIG && btRxAvailable() > 0) {
+            uint8_t raw = 0;
+            btRxRead(&raw, 1);
+            char c = (char)raw;
             if (c == '\n' || c == '\r') {
                 btCmdline.trim();
                 if (btCmdline.length()) {
-                    handleCommand(btCmdline, SerialBT);
-                    SerialBT.print("END\r\n");
+                    handleCommand(btCmdline, btOut);
+                    btOut.print("END\r\n");
                 }
                 btCmdline = "";
             } else if (btCmdline.length() < 200) {
@@ -654,23 +958,8 @@ void setup()
         connectRequests = nullptr;
     }
 
-    /* The N-Gage only supports Bluetooth 1.1 legacy PIN pairing.
-       disableSSP() must come before begin(), setPin() after it (it talks to
-       the running Bluetooth stack). */
-#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
-    SerialBT.disableSSP();
-#endif
-    SerialBT.register_callback(sppCallback);
-    if (!SerialBT.begin(cfg.btname)) {
+    if (!btInit(cfg.btname.c_str(), cfg.pin)) {
         Serial.println("Bluetooth init failed");
-    }
-#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
-    bool pinOk = SerialBT.setPin(cfg.pin.c_str(), cfg.pin.length());
-#else
-    bool pinOk = SerialBT.setPin(cfg.pin.c_str());
-#endif
-    if (!pinOk) {
-        Serial.println("Bluetooth PIN could not be set");
     }
     Serial.printf("Bluetooth SPP '%s' ready\n", cfg.btname.c_str());
 
@@ -700,7 +989,14 @@ void loop()
 {
     static String cmdline;
     static uint32_t lastLed = 0;
+    static uint32_t lastLoop = 0;
+    static bool haveLastLoop = false;
     uint32_t now = millis();
+    if (haveLastLoop && now - lastLoop > loopMaxMs) {
+        loopMaxMs = now - lastLoop;
+    }
+    lastLoop = now;
+    haveLastLoop = true;
 
     /* console */
     while (Serial.available()) {
@@ -761,7 +1057,21 @@ void loop()
             btOnClose(millis());
         }
     }
-    btPump(millis());
+    {
+        bool overflow;
+        uint32_t handle, drops;
+        portENTER_CRITICAL(&btEventMux);
+        overflow = btRxOverflow;
+        handle = btHandle;
+        drops = btRxDropped;
+        portEXIT_CRITICAL(&btEventMux);
+        if (overflow && !btDisconnectPending) {
+            Serial.printf("Bluetooth RX buffer overflow: %lu total bytes dropped\n", (unsigned long)drops);
+            btDisconnect(handle, "RX buffer overflow");
+        } else if (!overflow && !btDisconnectPending) {
+            btPump(millis());
+        }
+    }
 
     /* Wi-Fi */
     if (!web) {
@@ -780,16 +1090,42 @@ void loop()
         bridge_srv_disconnected(&br, millis());
     }
     if (tcpConnected) {
+        static tcp_frame_pause pause = {};
         uint8_t buf[512];
         size_t budget = 2048;
-        int n;
-        while (budget && (n = tcp.available()) > 0) {
-            size_t chunk = (size_t)n < sizeof(buf) ? (size_t)n : sizeof(buf);
-            if (chunk > budget) {
-                chunk = budget;
+        while (budget) {
+            /* A server ACK may be behind data in the TCP stream. Never
+               indefinitely block it or the server link's control frames. */
+            if (!tcp_frame_input_ready(&pause, br.dev_connected && br.dev.state == GC_LS_UP,
+                                       br.to_dev.count, BRIDGE_FIFO_LEN, br.srv.q_sent, millis())) {
+                break;
             }
-            n = tcp.read(buf, chunk);
+            size_t chunk = budget < sizeof(buf) ? budget : sizeof(buf);
+            int n = recv(tcp.fd(), buf, chunk, MSG_PEEK | MSG_DONTWAIT);
+            if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+                break;
+            }
             if (n <= 0) {
+                if (n < 0) {
+                    Serial.printf("TCP read failed (%d); reconnecting\n", errno);
+                } else {
+                    Serial.println("TCP peer closed; reconnecting");
+                }
+                tcpOutputFailed = true;
+                break;
+            }
+            chunk = stream_frame_input_chunk(buf, (size_t)n);
+            n = recv(tcp.fd(), buf, chunk, MSG_DONTWAIT);
+            if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+                break;
+            }
+            if (n <= 0) {
+                if (n < 0) {
+                    Serial.printf("TCP read failed (%d); reconnecting\n", errno);
+                } else {
+                    Serial.println("TCP peer closed; reconnecting");
+                }
+                tcpOutputFailed = true;
                 break;
             }
             budget -= (size_t)n;
@@ -802,6 +1138,7 @@ void loop()
 
     bridge_poll(&br, millis());
     flushTcpOutput();
+    btTxPump();
 
     /* warn once when memory gets tight (crashes follow when it runs out) */
     {

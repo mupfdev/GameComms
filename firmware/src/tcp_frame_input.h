@@ -5,7 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef struct {
+typedef struct
+{
     uint32_t since;
     int paused;
 } tcp_frame_pause;

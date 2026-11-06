@@ -72,7 +72,7 @@ static void test_paced(const gc_u8 *stream, size_t len, size_t read_limit)
 {
     size_t pos = 0;
     int pauses = 0;
-    tcp_frame_pause pause = {0};
+    tcp_frame_pause pause = { 0 };
     init_bridge();
     while (pos < len) {
         size_t n;
@@ -103,7 +103,7 @@ static void test_paced(const gc_u8 *stream, size_t len, size_t read_limit)
 
 static void test_server_ack_when_device_fifo_full(const gc_u8 *stream, size_t len)
 {
-    tcp_frame_pause pause = {0};
+    tcp_frame_pause pause = { 0 };
     gc_u8 msg[] = { GC_MT_DATA, 0 };
     gc_u8 ack[] = { GC_FT_ACK, 1, 0, 0, 0, GC_LINK_QUEUE };
     gc_u8 frame[GC_FRAME_MAX_WIRE];
@@ -150,7 +150,7 @@ static void test_server_ack_when_device_fifo_full(const gc_u8 *stream, size_t le
 
 static void test_pause_timeout(void)
 {
-    tcp_frame_pause pause = {0};
+    tcp_frame_pause pause = { 0 };
     assert(!tcp_frame_input_ready(&pause, 1, 4, 4, 0, UINT32_MAX - 49));
     assert(!tcp_frame_input_ready(&pause, 1, 4, 4, 0, 49));
     assert(tcp_frame_input_ready(&pause, 1, 4, 4, 0, 50));

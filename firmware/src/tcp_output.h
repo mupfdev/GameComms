@@ -8,7 +8,8 @@
 
 #define TCP_OUTPUT_CAPACITY 8192
 
-typedef struct tcp_output {
+typedef struct tcp_output
+{
     uint8_t data[TCP_OUTPUT_CAPACITY];
     size_t head;
     size_t len;

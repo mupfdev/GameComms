@@ -4,7 +4,8 @@
 
 #include "tcp_output.h"
 
-typedef struct bt_output {
+typedef struct bt_output
+{
     tcp_output queue;
     size_t inflight;
 } bt_output;

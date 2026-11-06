@@ -16,6 +16,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <errno.h>
 #include <esp_bt_device.h>
 #include <esp_bt_main.h>
 #include <esp_gap_bt_api.h>
@@ -23,7 +24,6 @@
 #include <esp_random.h>
 #include <esp_spp_api.h>
 #include <freertos/stream_buffer.h>
-#include <errno.h>
 #include <lwip/sockets.h>
 #include <new>
 
@@ -138,9 +138,9 @@ static bool btReceiving = false;
 static bool btEventOverflow = false;
 
 /* Callback-owned state is protected by btEventMux; the loop owns btTx. */
-#define BT_RX_BUFFER 2048
-#define BT_TX_CHUNK 512
-#define BT_WRITE_NONE (-2)
+#define BT_RX_BUFFER        2048
+#define BT_TX_CHUNK         512
+#define BT_WRITE_NONE       (-2)
 #define BT_WRITE_TIMEOUT_MS 10000
 static StreamBufferHandle_t btRx = nullptr;
 static uint32_t btRxDropped = 0;
@@ -270,7 +270,7 @@ static size_t btRxRead(uint8_t *buf, size_t n)
 /* Output stream for the Bluetooth configuration console. */
 class BtPrint : public Print
 {
-public:
+  public:
     size_t write(uint8_t c) override
     {
         return write(&c, 1);
@@ -341,7 +341,8 @@ static void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
         esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_GENERAL_DISCOVERABLE);
         esp_spp_start_srv(ESP_SPP_SEC_NONE, ESP_SPP_ROLE_SLAVE, 0, "SerialBT");
         return;
-    case ESP_SPP_DATA_IND_EVT: {
+    case ESP_SPP_DATA_IND_EVT:
+    {
         bool accept;
         portENTER_CRITICAL(&btEventMux);
         accept = btReceiving && param->data_ind.handle == btHandle && !btRxOverflow;

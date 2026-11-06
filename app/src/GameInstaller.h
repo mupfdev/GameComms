@@ -1,6 +1,7 @@
 /** @file GameInstaller.h
  *
- *  Copies the replacement GAMECOMMS.DLL of a variant to E:\System\Libs.
+ *  Copies the replacement GAMECOMMS.DLL to a game-specific directory, or
+ *  E:\System\Libs by default.
  *  The DLLs ship with the application in <app dir>\dlls\gcvN.dll.
  *
  *  Copyright (c) 2023-2026, Michael Fitzmayer. All rights reserved.

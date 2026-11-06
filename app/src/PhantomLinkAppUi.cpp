@@ -203,7 +203,7 @@ void CPhantomLinkAppUi::InstallSelectedL()
         return;
     }
     const TGameEntry &game = GameAt(index);
-    Install(game.iVariant, ((CApaApplication *)Application())->AppFullName(), game.iTargetDir);
+    TInt err = GameInstaller::Install(game.iVariant, ((CApaApplication *)Application())->AppFullName(), game.iTargetDir);
     TBuf<160> text;
     if (err == KErrNone) {
         TBuf<64> name;

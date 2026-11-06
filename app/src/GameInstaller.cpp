@@ -14,14 +14,25 @@ _LIT(KTargetName, "gamecomms.dll");
 
 static TInt DoInstallL(RFs &aFs, TInt aVariant, const TDesC &aAppFullName, const char *aTargetDir)
 {
-    TFileName KTargetDir;
+    TFileName targetDir;
     if (aTargetDir) {
-        KTargetDir.Copy(TPtrC8((const TUint8 *)aTargetDir).Left(KMaxFileName - 16));
+        TPtrC8 dir((const TUint8 *)aTargetDir);
+        if (dir.Length() == 0) {
+            return KErrArgument;
+        }
+        TInt separatorLength = dir[dir.Length() - 1] == '\\' ? 0 : 1;
+        if (dir.Length() + separatorLength + KTargetName().Length() > targetDir.MaxLength()) {
+            return KErrOverflow;
+        }
+        targetDir.Copy(dir);
+        if (separatorLength) {
+            targetDir.Append(_L("\\"));
+        }
     } else {
-        KTargetDir.Copy(KDefaultTargetDir);
+        targetDir.Copy(KDefaultTargetDir);
     }
-    TFileName KTargetFile(KTargetDir);
-    KTargetFile.Append(KTargetName);
+    TFileName targetFile(targetDir);
+    targetFile.Append(KTargetName);
 
     TParsePtrC app(aAppFullName);
     TFileName src;
@@ -36,11 +47,11 @@ static TInt DoInstallL(RFs &aFs, TInt aVariant, const TDesC &aAppFullName, const
         return err;
     }
 
-    BaflUtils::EnsurePathExistsL(aFs, KTargetDir);
+    BaflUtils::EnsurePathExistsL(aFs, targetDir);
 
     CFileMan *fileMan = CFileMan::NewL(aFs);
     CleanupStack::PushL(fileMan);
-    err = fileMan->Copy(src, KTargetFile, CFileMan::EOverWrite);
+    err = fileMan->Copy(src, targetFile, CFileMan::EOverWrite);
     CleanupStack::PopAndDestroy(); /* fileMan */
     if (err != KErrNone) {
         return err;
@@ -48,7 +59,7 @@ static TInt DoInstallL(RFs &aFs, TInt aVariant, const TDesC &aAppFullName, const
 
     /* the copy must be complete, a half written DLL would crash the game */
     TEntry dstEntry;
-    err = aFs.Entry(KTargetFile, dstEntry);
+    err = aFs.Entry(targetFile, dstEntry);
     if (err == KErrNone && dstEntry.iSize != srcEntry.iSize) {
         err = KErrCorrupt;
     }
@@ -66,7 +77,7 @@ TInt GameInstaller::Install(TInt aVariant, const TDesC &aAppFullName, const char
         return err;
     }
     TInt result = KErrNone;
-    DoInstallL(fs, aVariant, aAppFullName, aTargetDir));
+    TRAP(err, result = DoInstallL(fs, aVariant, aAppFullName, aTargetDir));
     fs.Close();
     return err != KErrNone ? err : result;
 }

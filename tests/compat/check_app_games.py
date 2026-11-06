@@ -26,7 +26,7 @@ def readme_games():
 def app_games():
     games = {}
     with open(os.path.join(ROOT, "app", "src", "GameList.cpp"), encoding="utf-8") as f:
-        \{\s*"([^"]+)"\s*,\s*(\d+)\s*(?:,\s*(?:"[^"]*"|NULL)\s*)?\}'
+        for m in re.finditer(r'\{\s*"([^"]+)"\s*,\s*(\d+)\s*(?:,\s*(?:"[^"]*"|NULL)\s*)?\}', f.read()):
             games[m.group(1)] = int(m.group(2))
     return games
 

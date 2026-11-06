@@ -138,7 +138,7 @@ static bool btReceiving = false;
 static bool btEventOverflow = false;
 
 /* Callback-owned state is protected by btEventMux; the loop owns btTx. */
-#define BT_RX_BUFFER        4096
+#define BT_RX_BUFFER        2048
 #define BT_TX_CHUNK         512
 #define BT_WRITE_NONE       (-2)
 #define BT_WRITE_TIMEOUT_MS 10000

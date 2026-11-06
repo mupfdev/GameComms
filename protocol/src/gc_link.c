@@ -13,11 +13,6 @@
 
 #define SEQ_DIFF(a, b) ((gc_i16)((gc_u16)(a) - (gc_u16)(b)))
 
-static gc_u8 link_peer_window(gc_u8 window)
-{
-    return window ? window : 1;
-}
-
 void gc_link_default_cfg(gc_link_cfg *cfg, gc_u8 role, int initiator)
 {
     cfg->rto_ms = 400;
@@ -27,7 +22,6 @@ void gc_link_default_cfg(gc_link_cfg *cfg, gc_u8 role, int initiator)
     cfg->hello_ms = 1000;
     cfg->role = role;
     cfg->initiator = (gc_u8)(initiator ? 1 : 0);
-    cfg->window = (gc_u8)GC_LINK_QUEUE;
 }
 
 static void link_frame_cb(void *ctx, const gc_u8 *body, size_t len);
@@ -36,9 +30,6 @@ void gc_link_init(gc_link *l, const gc_link_cfg *cfg, const gc_link_ops *ops, vo
 {
     memset(l, 0, sizeof(*l));
     l->cfg = *cfg;
-    if (!l->cfg.window) {
-        l->cfg.window = (gc_u8)GC_LINK_QUEUE;
-    }
     l->ops = *ops;
     l->ctx = ctx;
     l->state = GC_LS_IDLE;
@@ -99,7 +90,7 @@ static void link_tx_hello(gc_link *l, gc_u8 type, gc_u8 vmin, gc_u8 vmax, int re
     gc_w_u32(&w, l->link_id);
     gc_w_u16(&w, l->rx_next);
     gc_w_u16(&w, (gc_u16)GC_LINK_MAX_MSG);
-    gc_w_u8(&w, l->cfg.window);
+    gc_w_u8(&w, (gc_u8)GC_LINK_QUEUE);
     if (type == GC_FT_HELLO_ACK) {
         gc_w_u8(&w, (gc_u8)(resumed ? 1 : 0));
     }
@@ -117,7 +108,7 @@ static void link_flush(gc_link *l, gc_u32 now)
     if (l->state != GC_LS_UP) {
         return;
     }
-    while (l->q_sent < l->q_count && l->q_sent < l->peer_window) {
+    while (l->q_sent < l->q_count) {
         gc_link_slot *s = link_slot(l, l->q_sent);
         link_tx_frame(l, GC_FT_DATA, s->seq, s->data, s->len, now);
         if (l->q_sent == 0) {
@@ -133,7 +124,7 @@ static void link_retransmit(gc_link *l, gc_u32 now)
 {
     gc_u16 i;
 
-    for (i = 0; i < l->q_sent && i < l->peer_window; i++) {
+    for (i = 0; i < l->q_sent; i++) {
         gc_link_slot *s = link_slot(l, i);
         link_tx_frame(l, GC_FT_DATA, s->seq, s->data, s->len, now);
         l->st_retx++;
@@ -162,7 +153,6 @@ static void link_reset_session(gc_link *l)
     l->retries = 0;
     l->rto_cur = l->cfg.rto_ms;
     l->ack_pending = 0;
-    l->peer_window = 0;
 }
 
 void gc_link_forget(gc_link *l)
@@ -288,7 +278,6 @@ void gc_link_accept(gc_link *l, const gc_hello *h, int resume, gc_u32 now)
     }
     l->version = ver;
     l->peer_role = h->role;
-    l->peer_window = link_peer_window(h->window);
     l->state = GC_LS_UP;
     l->t_last_rx = now;
     link_tx_hello(l, GC_FT_HELLO_ACK, ver, ver, resumed, now);
@@ -426,14 +415,12 @@ static void link_handle_frame(gc_link *l, const gc_u8 *body, size_t len, gc_u32 
         l->peer_role = h.role;
         l->state = GC_LS_UP;
         if (resumed) {
-            l->peer_window = link_peer_window(h.window);
             l->st_resumes++;
             link_notify(l, GC_LE_UP_RESUMED, 0);
             link_resume_tx(l, h.rx_next, now);
         } else {
             link_reset_session(l);
             l->has_session = 1;
-            l->peer_window = link_peer_window(h.window);
             link_notify(l, GC_LE_UP_FRESH, 0);
             link_flush(l, now);
         }
@@ -457,7 +444,6 @@ static void link_handle_frame(gc_link *l, const gc_u8 *body, size_t len, gc_u32 
     }
 
     link_process_ack(l, ack, now);
-    link_flush(l, now); /* an ACK may have opened peer-window slots */
 
     switch (type) {
     case GC_FT_DATA:

@@ -78,7 +78,7 @@ static pipe_t p_ab, p_ba;
 static side_t A, B;
 static gc_u32 now_ms;
 
-static void setup_windows(gc_u8 a_window, gc_u8 b_window)
+static void setup(void)
 {
     gc_link_cfg ca, cb;
     gc_link_ops ops;
@@ -92,19 +92,12 @@ static void setup_windows(gc_u8 a_window, gc_u8 b_window)
     ops.can_accept = NULL;
     gc_link_default_cfg(&ca, GC_ROLE_DEVICE, 1);
     gc_link_default_cfg(&cb, GC_ROLE_BRIDGE, 0);
-    ca.window = a_window;
-    cb.window = b_window;
     gc_link_init(&A.link, &ca, &ops, &A);
     gc_link_init(&B.link, &cb, &ops, &B);
     A.out = &p_ab;
     B.out = &p_ba;
     A.connected = B.connected = 1;
     now_ms = 1000;
-}
-
-static void setup(void)
-{
-    setup_windows((gc_u8)GC_LINK_QUEUE, (gc_u8)GC_LINK_QUEUE);
 }
 
 /* deliver pending bytes in random-sized chunks */
@@ -188,161 +181,6 @@ static void test_handshake(void)
     CHECK_EQ(A.ups, 1);
     CHECK_EQ(B.ups, 1);
     CHECK_EQ(A.link.version, 1);
-    CHECK_EQ(A.link.peer_window, GC_LINK_QUEUE);
-    CHECK_EQ(B.link.peer_window, GC_LINK_QUEUE);
-}
-
-static void test_peer_window_and_ack_flush(void)
-{
-    setup_windows(2, 5);
-    a_next = b_next = 0;
-    gc_link_start(&A.link, 0x1235, now_ms);
-    pump(3, 0);
-    CHECK_EQ(A.link.peer_window, 5);
-    CHECK_EQ(B.link.peer_window, 2);
-
-    CHECK_EQ(send_n(&A, &a_next, 10), 10);
-    CHECK_EQ(send_n(&B, &b_next, 10), 10);
-    CHECK_EQ(A.link.q_count, 10);
-    CHECK_EQ(A.link.q_sent, 5);
-    CHECK_EQ(B.link.q_count, 10);
-    CHECK_EQ(B.link.q_sent, 2);
-
-    /* Receiving the first window acknowledges it and immediately flushes
-     * the queued messages into the newly opened slots. */
-    pump(1, 0);
-    CHECK_EQ(A.link.q_sent, 5);
-    CHECK_EQ(A.link.q_count, 5);
-    pump(30, 0);
-    CHECK_EQ(B.rx_count, a_next);
-    CHECK_EQ(A.rx_count, b_next);
-    CHECK_EQ(A.link.q_count, 0);
-    CHECK_EQ(B.link.q_count, 0);
-    CHECK_EQ(A.rx_errors + B.rx_errors, 0);
-}
-
-static void test_resume_with_window_shrink(void)
-{
-    setup_windows(4, 4);
-    a_next = b_next = 0;
-    gc_link_start(&A.link, 0x1236, now_ms);
-    pump(3, 0);
-    send_n(&A, &a_next, 8);
-    send_n(&B, &b_next, 8);
-    p_ab.len = p_ba.len = 0;
-    A.connected = B.connected = 0;
-    gc_link_transport_lost(&A.link, now_ms);
-    gc_link_transport_lost(&B.link, now_ms);
-    send_n(&A, &a_next, 2); /* queued messages beyond the prior window */
-    A.link.cfg.window = 3;
-    B.link.cfg.window = 1;
-
-    A.connected = B.connected = 1;
-    gc_link_listen(&B.link, now_ms);
-    gc_link_start(&A.link, 0x1236, now_ms);
-    pump(1, 0);
-    CHECK_EQ(A.link.peer_window, 1);
-    CHECK_EQ(B.link.peer_window, 3);
-    CHECK_EQ(A.link.q_sent, 1);
-    CHECK_EQ(B.link.q_sent, 3);
-    pump(100, 1);
-    CHECK_EQ(B.rx_count, a_next);
-    CHECK_EQ(A.rx_count, b_next);
-    CHECK_EQ(A.link.q_count, 0);
-    CHECK_EQ(B.link.q_count, 0);
-    CHECK_EQ(A.rx_errors + B.rx_errors, 0);
-}
-
-static void test_duplicate_hello_window_update(void)
-{
-    setup_windows(5, 5);
-    a_next = b_next = 0;
-    gc_link_start(&A.link, 0x1237, now_ms);
-    pump(3, 0);
-    send_n(&A, &a_next, 6);
-    p_ab.len = 0; /* lose the original in-flight DATA frames */
-    B.link.cfg.window = 1;
-
-    gc_link_start(&A.link, 0x1237, now_ms);
-    pump(1, 0);
-    CHECK_EQ(A.link.peer_window, 1);
-    CHECK_EQ(A.link.q_sent, 1);
-    pump(100, 1);
-    CHECK_EQ(B.rx_count, a_next);
-    CHECK_EQ(A.link.q_count, 0);
-    CHECK_EQ(A.rx_errors + B.rx_errors, 0);
-}
-
-static void test_zero_window_progress(void)
-{
-    gc_hello h;
-    setup_windows((gc_u8)GC_LINK_QUEUE, 0);
-    gc_link_start(&A.link, 0x1238, now_ms);
-    pump(3, 0);
-    CHECK_EQ(B.link.cfg.window, GC_LINK_QUEUE);
-    CHECK_EQ(A.link.peer_window, GC_LINK_QUEUE);
-
-    memset(&h, 0, sizeof(h));
-    h.ver_min = GC_PROTO_VERSION_MIN;
-    h.ver_max = GC_PROTO_VERSION_MAX;
-    h.link_id = 0x1239;
-    h.window = 0;
-    gc_link_listen(&B.link, now_ms);
-    gc_link_accept(&B.link, &h, 0, now_ms);
-    CHECK_EQ(B.link.peer_window, 1);
-    CHECK_EQ(gc_link_send(&B.link, (const gc_u8 *)"x", 1, now_ms), GC_LINK_OK);
-    CHECK_EQ(B.link.q_sent, 1);
-    CHECK_EQ(gc_link_send(&B.link, (const gc_u8 *)"y", 1, now_ms), GC_LINK_OK);
-    CHECK_EQ(B.link.q_sent, 1);
-    CHECK_EQ(B.link.q_count, 2);
-}
-
-static void test_delayed_ack_with_inflight_writes(void)
-{
-    setup_windows(4, 2);
-    a_next = b_next = 0;
-    gc_link_start(&A.link, 0x123a, now_ms);
-    pump(3, 0);
-    send_n(&A, &a_next, 4);
-    send_n(&B, &b_next, 1);
-    CHECK_EQ(A.link.q_sent, 2);
-
-    /* Deliver B's frame carrying a stale ACK before B receives A's DATA. */
-    {
-        gc_u8 tmp[PIPE_CAP];
-        size_t n = p_ba.len;
-        memcpy(tmp, p_ba.buf, n);
-        p_ba.len = 0;
-        gc_link_input(&A.link, tmp, n, ++now_ms);
-    }
-    CHECK_EQ(A.link.q_sent, 2);
-
-    /* B receives A's in-flight messages, but hold its ACK for now. */
-    {
-        gc_u8 tmp[PIPE_CAP];
-        size_t n = p_ab.len;
-        memcpy(tmp, p_ab.buf, n);
-        p_ab.len = 0;
-        gc_link_input(&B.link, tmp, n, ++now_ms);
-    }
-    CHECK_EQ(A.link.q_sent, 2);
-    CHECK(p_ba.len > 0);
-
-    /* The cumulative ACK releases slots and the pending messages are sent. */
-    {
-        gc_u8 tmp[PIPE_CAP];
-        size_t n = p_ba.len;
-        memcpy(tmp, p_ba.buf, n);
-        p_ba.len = 0;
-        gc_link_input(&A.link, tmp, n, ++now_ms);
-    }
-    CHECK_EQ(A.link.q_count, 2);
-    CHECK_EQ(A.link.q_sent, 2);
-    pump(30, 0);
-    CHECK_EQ(B.rx_count, a_next);
-    CHECK_EQ(A.rx_count, b_next);
-    CHECK_EQ(A.link.q_count, 0);
-    CHECK_EQ(A.rx_errors + B.rx_errors, 0);
 }
 
 static void test_bulk_bidirectional(void)
@@ -390,7 +228,7 @@ static void test_corruption_and_loss(void)
 static void test_resume_after_transport_loss(void)
 {
     int i;
-    setup_windows(2, 5);
+    setup();
     a_next = b_next = 0;
     gc_link_start(&A.link, 77, now_ms);
     pump(3, 0);
@@ -586,11 +424,6 @@ int main(void)
     RUN(test_backpressure);
     RUN(test_delayed_tcp_link);
     RUN(test_handshake);
-    RUN(test_peer_window_and_ack_flush);
-    RUN(test_resume_with_window_shrink);
-    RUN(test_duplicate_hello_window_update);
-    RUN(test_zero_window_progress);
-    RUN(test_delayed_ack_with_inflight_writes);
     RUN(test_bulk_bidirectional);
     RUN(test_corruption_and_loss);
     RUN(test_resume_after_transport_loss);

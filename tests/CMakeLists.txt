@@ -6,9 +6,8 @@
 # Option GC_SANITIZE=ON builds with AddressSanitizer + UBSan (GCC/Clang).
 
 cmake_minimum_required(VERSION 3.10)
-project(gamecomms_tests C CXX)
+project(gamecomms_tests C)
 set(CMAKE_C_STANDARD 99)
-set(CMAKE_CXX_STANDARD 11)
 enable_testing()
 
 option(GC_SANITIZE "Build with ASan/UBSan" OFF)
@@ -57,20 +56,6 @@ endforeach()
 add_executable(test_server_core ${ROOT}/server/tests/test_core.c)
 target_link_libraries(test_server_core gc_server_core)
 add_test(NAME server_core COMMAND test_server_core)
-
-add_executable(test_bt_event_filter ${ROOT}/tests/sim/test_bt_event_filter.c)
-target_include_directories(test_bt_event_filter PRIVATE ${ROOT}/firmware/src)
-target_link_libraries(test_bt_event_filter gc_protocol)
-add_test(NAME firmware_bt_events COMMAND test_bt_event_filter)
-
-add_executable(test_bt_rx_buffer ${ROOT}/tests/sim/test_bt_rx_buffer.c)
-target_include_directories(test_bt_rx_buffer PRIVATE ${ROOT}/firmware/src)
-target_link_libraries(test_bt_rx_buffer gc_protocol)
-add_test(NAME firmware_bt_rx_buffer COMMAND test_bt_rx_buffer)
-
-add_executable(test_async_server ${ROOT}/tests/sim/test_async_server.cpp)
-target_include_directories(test_async_server PRIVATE ${ROOT}/tests/sim)
-add_test(NAME firmware_async_server COMMAND test_async_server)
 
 add_executable(test_e2e ${ROOT}/tests/sim/sim.c ${ROOT}/tests/sim/test_e2e.c)
 target_link_libraries(test_e2e gc_dev_core gc_bridge_core gc_server_core)

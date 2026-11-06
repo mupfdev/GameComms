@@ -134,14 +134,9 @@ fields, followed by one byte "resumed" (0 or 1).
   frame is missing, they are dropped and the sender resends.
 - Every frame carries the acknowledgement. A separate ACK is sent after
   data was received.
-- Each side advertises a message window in HELLO/HELLO_ACK (16 by default,
-  4 on the ESP32). An updated sender limits its unacknowledged messages to the
-  peer's advertised window; an ACK immediately flushes newly available slots.
-  Older senders remain compatible but do not enforce the advertised window.
-  A zero advertised window is treated as one because the window is negotiated
-  only during the handshake and cannot otherwise reopen. The local queue can
-  also hold up to 16 messages (4 on the ESP32), including messages waiting for
-  a peer-window slot; beyond that, sending returns FULL.
+- The sender keeps at most 16 unacknowledged messages (8 on the ESP32).
+  Beyond that, sending returns FULL. This is the flow control towards the
+  application.
 - Lost frames are resent after a timeout (400 ms on Bluetooth, 1 s on
   TCP), doubling up to 3 s or 5 s.
 - A receiver that cannot take more data does not acknowledge it, and the

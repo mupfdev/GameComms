@@ -138,7 +138,6 @@ typedef struct
     gc_u16 hello_ms;   /* HELLO retry interval (initiator)          */
     gc_u8 role;
     gc_u8 initiator; /* 1: sends HELLO, 0: waits for HELLO        */
-    gc_u8 window;    /* advertised receive window; 0 uses queue size */
 } gc_link_cfg;
 
 typedef struct
@@ -158,9 +157,8 @@ typedef struct
     int state;
     gc_u8 version; /* negotiated protocol version */
     gc_u8 peer_role;
-    gc_u32 link_id;    /* identity of this link session */
-    int has_session;   /* link_id/sequence state are valid */
-    gc_u8 peer_window; /* maximum unacknowledged messages peer accepts */
+    gc_u32 link_id;  /* identity of this link session */
+    int has_session; /* link_id/sequence state are valid */
 
     /* transmit side */
     gc_link_slot q[GC_LINK_QUEUE];

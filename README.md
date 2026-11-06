@@ -129,7 +129,7 @@ Replace the game's `gamecomms.dll` with the build from the "Use" column
 md5sum, or with `python tools/gc_identify.py dll gamecomms.dll`.
 
 | Game                                     | Use      | md5sum of the original           | Ordinals | Status |
-| ---------------------------------------- | -------- | -------------------------------- | -------- | ------ |
+| ---------------------------------------- | -------- | -------------------------------- | -------- |:------:|
 | Nokia N-Gage SDK 1.0 Beta                | SDK only | cb326c500bdb795494d55d30196b8711 | 33       |        |
 | Marcel Desailly Pro Soccer               | v1       | 79c25cdd1972c287712475ee544c7bf3 | 33       |        |
 | MotoGP                                   | v2       | 8863fdea897f1c63807ad69252a3566f | 55       |        |

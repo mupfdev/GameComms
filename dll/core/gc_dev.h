@@ -184,7 +184,7 @@ typedef struct
     int transport_up;
     int registered;
     int server_up; /* from BRIDGE_STATUS */
-    int reg_sent;
+    gc_u32 t_reg_retry;
 
     /* role */
     int role;

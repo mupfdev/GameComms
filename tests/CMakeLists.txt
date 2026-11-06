@@ -61,6 +61,10 @@ add_executable(test_e2e ${ROOT}/tests/sim/sim.c ${ROOT}/tests/sim/test_e2e.c)
 target_link_libraries(test_e2e gc_dev_core gc_bridge_core gc_server_core)
 add_test(NAME e2e_simulated COMMAND test_e2e)
 
+add_executable(test_tcp_output ${ROOT}/tests/sim/test_tcp_output.c)
+target_include_directories(test_tcp_output PRIVATE ${ROOT}/firmware/src)
+add_test(NAME firmware_tcp_output COMMAND test_tcp_output)
+
 # real sockets: start gamecommsd, run gcsim against it
 add_executable(gamecommsd ${ROOT}/server/src/gcs_main.c)
 target_link_libraries(gamecommsd gc_server_core)

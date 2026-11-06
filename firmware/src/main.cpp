@@ -20,12 +20,16 @@
 #include <esp_bt_device.h>
 #include <esp_random.h>
 #include <esp_spp_api.h>
+#include <errno.h>
+#include <lwip/sockets.h>
+#include <new>
 
 extern "C" {
 #include "bridge_core.h"
+#include "tcp_output.h"
 }
 
-#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+#if !defined(CONFIG_BT_ENABLED)
 #error Bluetooth Classic is required (use an ESP32, not S2/S3/C3)
 #endif
 
@@ -107,27 +111,59 @@ static void saveConfig()
 static BluetoothSerial SerialBT;
 static WiFiClient tcp;
 static bridge br;
-static volatile bool btOpened = false;
-static volatile bool btClosed = false;
 static uint8_t btPeer[6];
 static bool btConnected = false;
 static bool tcpWanted = false;
 static bool tcpConnected = false;
 static WebServer *web = nullptr;
-static IPAddress discoveredIp;
-static uint16_t discoveredPort = 0;
+
+struct BtEvent
+{
+    bool opened;
+    uint8_t peer[6];
+    int status;
+    uint32_t portStatus;
+    bool remote;
+};
+static portMUX_TYPE btEventMux = portMUX_INITIALIZER_UNLOCKED;
+static BtEvent btEvents[16];
+static unsigned btEventHead = 0;
+static unsigned btEventCount = 0;
+static uint32_t btHandle = 0;
+static bool btEventOverflow = false;
+
+struct ConnectRequest
+{
+    String host;
+    uint16_t port;
+    uint32_t generation;
+    bool connected;
+    WiFiClient client;
+};
+static QueueHandle_t connectRequests = nullptr;
+static QueueHandle_t connectResults = nullptr;
+static bool connectPending = false;
+static uint32_t connectGeneration = 0;
+
+/* The bridge emits complete frames synchronously; retain unsent bytes in order. */
+static tcp_output tcpOutput;
+static bool tcpOutputFailed = false;
 
 static void io_dev_write(void *, const gc_u8 *d, size_t n)
 {
-    if (btConnected) {
-        SerialBT.write(d, n);
+    if (btConnected && SerialBT.write(d, n) != n) {
+        Serial.println("Bluetooth write failed; link will retry");
     }
 }
 
 static void io_srv_write(void *, const gc_u8 *d, size_t n)
 {
-    if (tcpConnected && tcp.connected()) {
-        tcp.write(d, n);
+    if (!tcpConnected || tcpOutputFailed) {
+        return;
+    }
+    if (!tcp_output_append(&tcpOutput, d, n)) {
+        Serial.println("TCP output buffer full; reconnecting");
+        tcpOutputFailed = true;
     }
 }
 
@@ -139,10 +175,13 @@ static void io_srv_connect(void *)
 static void io_srv_disconnect(void *)
 {
     tcpWanted = false;
+    ++connectGeneration;
     if (tcpConnected) {
         tcp.stop();
         tcpConnected = false;
     }
+    tcp_output_clear(&tcpOutput);
+    tcpOutputFailed = false;
 }
 
 static void io_log(void *, const char *line)
@@ -152,22 +191,41 @@ static void io_log(void *, const char *line)
     }
 }
 
-/* SPP events arrive on the Bluetooth task: only set flags here */
+/* SPP callbacks run on the Bluetooth task; retain event order and peer. */
 static void sppCallback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 {
-    if (event == ESP_SPP_SRV_OPEN_EVT) {
-        memcpy(btPeer, param->srv_open.rem_bda, 6);
-        btOpened = true;
-    } else if (event == ESP_SPP_CLOSE_EVT) {
-        btClosed = true;
+    BtEvent next = {};
+    bool enqueue = false;
+    portENTER_CRITICAL(&btEventMux);
+    if (event == ESP_SPP_SRV_OPEN_EVT && param->srv_open.status == ESP_SPP_SUCCESS && !btHandle) {
+        btHandle = param->srv_open.handle;
+        next.opened = true;
+        memcpy(next.peer, param->srv_open.rem_bda, sizeof(next.peer));
+        enqueue = true;
+    } else if (event == ESP_SPP_CLOSE_EVT && param->close.handle == btHandle && btHandle &&
+               (param->close.async || param->close.status == ESP_SPP_SUCCESS)) {
+        btHandle = 0;
+        next.status = param->close.status;
+        next.portStatus = param->close.port_status;
+        next.remote = param->close.async;
+        enqueue = true;
     }
+    if (enqueue) {
+        if (btEventCount == sizeof(btEvents) / sizeof(btEvents[0])) {
+            btEventOverflow = true;
+        } else {
+            btEvents[(btEventHead + btEventCount) % (sizeof(btEvents) / sizeof(btEvents[0]))] = next;
+            ++btEventCount;
+        }
+    }
+    portEXIT_CRITICAL(&btEventMux);
 }
 
 /* ------------------------------------------------------------------ */
 /* server discovery / connection                                       */
 /* ------------------------------------------------------------------ */
 
-static bool discoverServer()
+static bool discoverServer(IPAddress &discoveredIp, uint16_t &discoveredPort)
 {
     WiFiUDP udp;
     if (!udp.begin(0)) {
@@ -189,7 +247,7 @@ static bool discoverServer()
             char buf[96] = { 0 };
             udp.read(buf, sizeof(buf) - 1);
             int port = 0;
-            if (sscanf(buf, "GCSERVER1 %d", &port) == 1 && port > 0) {
+            if (sscanf(buf, "GCSERVER1 %d", &port) == 1 && port > 0 && port <= 65535) {
                 discoveredIp = udp.remoteIP();
                 discoveredPort = (uint16_t)port;
                 udp.stop();
@@ -203,26 +261,82 @@ static bool discoverServer()
     return false;
 }
 
-static void tryConnectServer()
+static void connectTask(void *)
 {
-    bool ok;
-    tcpWanted = false;
-    if (cfg.host == "auto" || cfg.host.length() == 0) {
-        if (!discoverServer()) {
-            bridge_srv_disconnected(&br, millis());
-            return;
+    for (;;) {
+        ConnectRequest *request;
+        if (xQueueReceive(connectRequests, &request, portMAX_DELAY) != pdTRUE) {
+            continue;
         }
-        ok = tcp.connect(discoveredIp, discoveredPort, 3000);
-    } else {
-        ok = tcp.connect(cfg.host.c_str(), cfg.port, 3000);
+        if (request->host == "auto" || request->host.length() == 0) {
+            IPAddress ip;
+            uint16_t port;
+            request->connected = discoverServer(ip, port) && request->client.connect(ip, port, 3000);
+        } else {
+            request->connected = request->client.connect(request->host.c_str(), request->port, 3000);
+        }
+        xQueueSend(connectResults, &request, portMAX_DELAY);
     }
-    if (!ok) {
+}
+
+static void startConnectServer()
+{
+    tcpWanted = false;
+    ConnectRequest *request = new (std::nothrow) ConnectRequest;
+    if (!request) {
+        Serial.println("Cannot allocate server connection request");
         bridge_srv_disconnected(&br, millis());
         return;
     }
-    tcp.setNoDelay(true);
-    tcpConnected = true;
-    bridge_srv_connected(&br, millis());
+    request->host = cfg.host;
+    request->port = cfg.port;
+    request->generation = connectGeneration;
+    request->connected = false;
+    if (!connectRequests || xQueueSend(connectRequests, &request, 0) != pdTRUE) {
+        Serial.println("Cannot start server connection task");
+        delete request;
+        bridge_srv_disconnected(&br, millis());
+        return;
+    }
+    connectPending = true;
+}
+
+static void finishConnectServer()
+{
+    ConnectRequest *request;
+    if (!connectResults || xQueueReceive(connectResults, &request, 0) != pdTRUE) {
+        return;
+    }
+    connectPending = false;
+    if (request->generation != connectGeneration || WiFi.status() != WL_CONNECTED) {
+        request->client.stop();
+    } else if (!request->connected) {
+        tcpWanted = false;
+        bridge_srv_disconnected(&br, millis());
+    } else {
+        tcpWanted = false;
+        tcp = request->client;
+        tcp.setNoDelay(true);
+        tcpConnected = true;
+        bridge_srv_connected(&br, millis());
+    }
+    delete request;
+}
+
+static void flushTcpOutput()
+{
+    while (tcpConnected && tcpOutput.len && !tcpOutputFailed) {
+        size_t n = tcp_output_chunk(&tcpOutput);
+        int sent = send(tcp.fd(), tcpOutput.data + tcpOutput.head, n, MSG_DONTWAIT);
+        if (sent > 0) {
+            tcp_output_consume(&tcpOutput, (size_t)sent);
+        } else if (sent < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+            break;
+        } else {
+            Serial.printf("TCP write failed (%d); reconnecting\n", errno);
+            tcpOutputFailed = true;
+        }
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -526,6 +640,20 @@ void setup()
     io.log = io_log;
     bridge_init(&br, &bc, &io, nullptr);
 
+    connectRequests = xQueueCreate(1, sizeof(ConnectRequest *));
+    connectResults = xQueueCreate(1, sizeof(ConnectRequest *));
+    if (!connectRequests || !connectResults ||
+        xTaskCreatePinnedToCore(connectTask, "server-connect", 4096, nullptr, 1, nullptr,
+#if CONFIG_FREERTOS_UNICORE
+                                0
+#else
+                                xPortGetCoreID() == 0 ? 1 : 0
+#endif
+                                ) != pdPASS) {
+        Serial.println("Server connection worker could not be started");
+        connectRequests = nullptr;
+    }
+
     /* The N-Gage only supports Bluetooth 1.1 legacy PIN pairing.
        disableSSP() must come before begin(), setPin() after it (it talks to
        the running Bluetooth stack). */
@@ -603,15 +731,37 @@ void loop()
     }
 
     /* Bluetooth transport events */
-    if (btClosed) {
-        btClosed = false;
-        btOnClose(now);
+    for (;;) {
+        BtEvent event;
+        bool haveEvent;
+        bool overflow;
+        portENTER_CRITICAL(&btEventMux);
+        overflow = btEventOverflow;
+        haveEvent = btEventCount != 0;
+        if (haveEvent) {
+            event = btEvents[btEventHead];
+            btEventHead = (btEventHead + 1) % (sizeof(btEvents) / sizeof(btEvents[0]));
+            --btEventCount;
+        }
+        portEXIT_CRITICAL(&btEventMux);
+        if (overflow) {
+            Serial.println("Bluetooth event queue overflow; restarting");
+            delay(100);
+            ESP.restart();
+        }
+        if (!haveEvent) {
+            break;
+        }
+        if (event.opened) {
+            memcpy(btPeer, event.peer, sizeof(btPeer));
+            btOnOpen(millis());
+        } else {
+            Serial.printf("Bluetooth SPP closed: status %d, port status %lu, %s\n", event.status,
+                          (unsigned long)event.portStatus, event.remote ? "remote" : "local");
+            btOnClose(millis());
+        }
     }
-    if (btOpened) {
-        btOpened = false;
-        btOnOpen(now);
-    }
-    btPump(now);
+    btPump(millis());
 
     /* Wi-Fi */
     if (!web) {
@@ -620,27 +770,38 @@ void loop()
     }
 
     /* TCP */
-    if (tcpConnected && !tcp.connected()) {
-        tcpConnected = false;
+    finishConnectServer();
+    flushTcpOutput();
+    if (tcpConnected && (tcpOutputFailed || !tcp.connected())) {
         tcp.stop();
-        bridge_srv_disconnected(&br, now);
+        tcpConnected = false;
+        tcp_output_clear(&tcpOutput);
+        tcpOutputFailed = false;
+        bridge_srv_disconnected(&br, millis());
     }
     if (tcpConnected) {
         uint8_t buf[512];
+        size_t budget = 2048;
         int n;
-        while ((n = tcp.available()) > 0) {
-            n = tcp.read(buf, n > (int)sizeof(buf) ? sizeof(buf) : n);
+        while (budget && (n = tcp.available()) > 0) {
+            size_t chunk = (size_t)n < sizeof(buf) ? (size_t)n : sizeof(buf);
+            if (chunk > budget) {
+                chunk = budget;
+            }
+            n = tcp.read(buf, chunk);
             if (n <= 0) {
                 break;
             }
+            budget -= (size_t)n;
             bridge_srv_input(&br, buf, (size_t)n, millis());
         }
     }
-    if (tcpWanted && !tcpConnected && WiFi.status() == WL_CONNECTED) {
-        tryConnectServer();
+    if (tcpWanted && !tcpConnected && !connectPending && WiFi.status() == WL_CONNECTED) {
+        startConnectServer();
     }
 
     bridge_poll(&br, millis());
+    flushTcpOutput();
 
     /* warn once when memory gets tight (crashes follow when it runs out) */
     {

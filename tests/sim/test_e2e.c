@@ -16,6 +16,43 @@ static int data_eq(gcd_event *e, const char *s)
     return e && e->len == strlen(s) && memcmp(e->data, s, e->len) == 0;
 }
 
+static void test_registration_does_not_repeat_immediately(void)
+{
+    sim_init(&W, 1, GC_API_V2, UID);
+    sim_run(&W, 500);
+    CHECK_EQ(W.n[0].dev.registered, 1);
+    CHECK_EQ(W.n[0].br.st_dev_msgs, 1);
+    sim_free(&W);
+}
+
+static void test_role_start_does_not_advance_registration_retry(void)
+{
+    sim_init(&W, 1, GC_API_V2, UID);
+    sim_run(&W, 30);
+    CHECK_EQ(W.n[0].dev.link.state, GC_LS_UP);
+    CHECK_EQ(W.n[0].dev.registered, 0);
+    gcd_v2_start(&W.n[0].dev, 1, 0, W.now);
+    sim_run(&W, 500);
+    CHECK_EQ(W.n[0].dev.registered, 1);
+    CHECK_EQ(W.n[0].br.st_dev_msgs, 3); /* registration, host open, session state */
+    CHECK_EQ(W.n[0].dev.session_open, 1);
+    sim_free(&W);
+}
+
+static void test_registration_retry_waits_for_deadline(void)
+{
+    sim_init(&W, 1, GC_API_V2, UID);
+    bridge_set_wifi(&W.n[0].br, 0, -50, W.now);
+    sim_run(&W, 500);
+    CHECK_EQ(W.n[0].dev.registered, 0);
+    CHECK_EQ(W.n[0].br.st_dev_msgs, 1);
+    sim_run(&W, 2400);
+    CHECK_EQ(W.n[0].br.st_dev_msgs, 1);
+    sim_run(&W, 300);
+    CHECK_EQ(W.n[0].br.st_dev_msgs, 2);
+    sim_free(&W);
+}
+
 /* ================================================================ */
 /* GameComms 1.x                                                     */
 /* ================================================================ */
@@ -616,6 +653,9 @@ static void test_concurrent_sessions_isolated(void)
 
 int main(void)
 {
+    RUN(test_registration_does_not_repeat_immediately);
+    RUN(test_role_start_does_not_advance_registration_retry);
+    RUN(test_registration_retry_waits_for_deadline);
     RUN(test_v1_startup_four_players);
     RUN(test_v1_game_does_not_start_early);
     RUN(test_v1_data_routing);

@@ -114,6 +114,14 @@ Hardware: an ESP32 with Bluetooth Classic, for example an ESP32-WROOM-32
 or WROVER dev board. ESP32-S2, S3, C3 and C6 do not have Bluetooth
 Classic and will not work. You need one bridge per N-Gage.
 
+On dual-core boards, server discovery, DNS and TCP connection attempts run
+on the core opposite the Arduino loop. The loop retains ownership of the
+bridge and services Bluetooth while those operations wait; TCP writes are
+buffered and nonblocking. If the TCP output buffer fills, the bridge logs the
+problem and reconnects. This reduces scheduling stalls but does not eliminate
+Wi-Fi/Bluetooth radio coexistence or signal-quality limitations. Check actual
+reliability on the board with an N-Gage, including server and Wi-Fi outages.
+
 The on-board LED shows the state:
 
 - off: no Wi-Fi or no server
@@ -468,6 +476,10 @@ radio links. With real hardware:
 
 For debugging, set `Log=1` in `E:\GameComms.ini` and `log_level=3` on the
 server. The bridge console command `status` shows connection statistics.
+The ESP32 console also reports SPP close status, port status and whether the
+close was remote or local. Capture the messages following a drop as well as
+those leading up to it; controller `ASSERT_WARN` output alone does not identify
+the cause of a disconnect.
 
 The EKA2L1 emulator does not emulate Bluetooth, but it can show whether a
 game loads the replacement DLL and starts its multiplayer mode.

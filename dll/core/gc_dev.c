@@ -1026,8 +1026,7 @@ static void on_msg(void *ctx, const gc_u8 *buf, size_t len)
         if (m.u.registered.result != GC_R_OK) {
             dlog(d, "registration failed", m.u.registered.result);
             d->registered = 0;
-            d->reg_sent = 0;
-            d->t_retry = d->now + RETRY_MS;
+            d->t_reg_retry = d->now + RETRY_MS;
             if (d->role == GCD_ROLE_CLIENT && (d->joining || d->selecting)) {
                 session_lost(d, map_result(m.u.registered.result), 0);
             }
@@ -1099,13 +1098,17 @@ static void on_write(void *ctx, const gc_u8 *data, size_t len)
 static void send_register(gcd_dev *d)
 {
     gc_msg m;
+    int result;
     memset(&m, 0, sizeof(m));
     m.type = GC_MT_REGISTER;
     m.u.reg.api = d->cfg.api;
     m.u.reg.variant = d->cfg.variant;
     copy_name(m.u.reg.name, d->cfg.name);
-    send_msg(d, &m);
-    d->reg_sent = 1;
+    result = send_msg(d, &m);
+    if (result != GCD_KErrNone) {
+        dlog(d, "registration send failed", result);
+    }
+    d->t_reg_retry = d->now + RETRY_MS;
 }
 
 static void on_state(void *ctx, int ev_, int reason)
@@ -1193,10 +1196,9 @@ void gcd_poll(gcd_dev *d, gc_u32 now)
     if (!gc_link_is_up(&d->link)) {
         return;
     }
-    if (!d->registered && (!d->reg_sent || !GC_TIME_BEFORE(now, d->t_retry))) {
-        if (!GC_TIME_BEFORE(now, d->t_retry)) {
+    if (!d->registered) {
+        if (!GC_TIME_BEFORE(now, d->t_reg_retry)) {
             send_register(d);
-            d->t_retry = now + RETRY_MS;
         }
         return;
     }

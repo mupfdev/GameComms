@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#define TCP_OUTPUT_CAPACITY (12 * 1024)
+#define TCP_OUTPUT_CAPACITY 8192
 
 typedef struct tcp_output
 {

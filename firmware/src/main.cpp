@@ -17,6 +17,7 @@
 #include <WiFi.h>
 #include <WiFiUdp.h>
 #include <errno.h>
+#include <esp_bt.h>
 #include <esp_bt_device.h>
 #include <esp_bt_main.h>
 #include <esp_gap_bt_api.h>
@@ -138,7 +139,7 @@ static bool btReceiving = false;
 static bool btEventOverflow = false;
 
 /* Callback-owned state is protected by btEventMux; the loop owns btTx. */
-#define BT_RX_BUFFER        2048
+#define BT_RX_BUFFER        4096
 #define BT_TX_CHUNK         512
 #define BT_WRITE_NONE       (-2)
 #define BT_WRITE_TIMEOUT_MS 10000
@@ -433,11 +434,19 @@ static void gapCallback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *para
 
 static bool btInit(const char *name, const String &pin)
 {
+    if (!btStarted()) {
+        esp_err_t err = esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
+        if (err != ESP_OK) {
+            Serial.printf("Bluetooth BLE memory release failed: %d\n", (int)err);
+            return false;
+        }
+        if (!btStart()) {
+            return false;
+        }
+    }
     btRx = xStreamBufferCreate(BT_RX_BUFFER, 1);
     if (!btRx) {
-        return false;
-    }
-    if (!btStarted() && !btStart()) {
+        Serial.println("Bluetooth RX buffer allocation failed");
         return false;
     }
     if (esp_bluedroid_get_status() == ESP_BLUEDROID_STATUS_UNINITIALIZED && esp_bluedroid_init() != ESP_OK) {
@@ -705,6 +714,12 @@ static void printStatus(Print &out)
     out.printf("  queues    : dev link %u/%u fifo %d/%d, srv link %u/%u fifo %d/%d\n",
                (unsigned)br.dev.q_count, (unsigned)GC_LINK_QUEUE, br.to_dev.count, BRIDGE_FIFO_LEN,
                (unsigned)br.srv.q_count, (unsigned)GC_LINK_QUEUE, br.to_srv.count, BRIDGE_FIFO_LEN);
+    out.printf("  dev link  : sent %u, tx next %u, rx next %u, retries %u, last rx %lu ms ago\n",
+               (unsigned)br.dev.q_sent, (unsigned)br.dev.tx_next, (unsigned)br.dev.rx_next,
+               (unsigned)br.dev.retries, (unsigned long)(millis() - br.dev.t_last_rx));
+    out.printf("  srv link  : sent %u, tx next %u, rx next %u, retries %u, last rx %lu ms ago\n",
+               (unsigned)br.srv.q_sent, (unsigned)br.srv.tx_next, (unsigned)br.srv.rx_next,
+               (unsigned)br.srv.retries, (unsigned long)(millis() - br.srv.t_last_rx));
     out.printf("  latency   : max BT write %lu ms, max loop interval %lu ms (since boot)\n",
                (unsigned long)btWriteMaxMs, (unsigned long)loopMaxMs);
     out.printf("  free heap : %u (lowest %u)\n", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMinFreeHeap());

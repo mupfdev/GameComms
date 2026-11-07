@@ -158,7 +158,7 @@ md5sum, or with `python tools/gc_identify.py dll gamecomms.dll`.
 | Pathway to Glory: Ikusa Islands          | v6       | bb02377c5361597f8d8503f5de584845 | 57       |                                                                  |
 | SSX Out of Bounds                        | v6       | bb02377c5361597f8d8503f5de584845 | 57       |                                                                  |
 | WWE Aftershock                           | v6       | bb02377c5361597f8d8503f5de584845 | 57       |                                                                  |
-| Worms World Party                        | v6       | bb02377c5361597f8d8503f5de584845 | 57       |                                                                  |
+| Worms World Party                        | v6       | bb02377c5361597f8d8503f5de584845 | 57       | ![Not%20Working](https://img.shields.io/badge/Not%20Working-red) |
 | X-Men Legends                            | v6       | bb02377c5361597f8d8503f5de584845 | 57       |                                                                  |
 | X-Men Legends II: Rise of Apocalypse     | v6       | bb02377c5361597f8d8503f5de584845 | 57       |                                                                  |
 | Xanadu Next                              | v6       | bb02377c5361597f8d8503f5de584845 | 57       |                                                                  |
